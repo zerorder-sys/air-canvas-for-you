@@ -428,9 +428,13 @@ function updateError(msg) {
 }
 
 function startMediaPipe() {
+  console.log('[HandTracker] Starting MediaPipe...');
+  console.log('[HandTracker] Hands available:', typeof Hands !== 'undefined');
+  console.log('[HandTracker] Camera available:', typeof Camera !== 'undefined');
+
   // eslint-disable-next-line no-undef
   if (typeof Hands === 'undefined') {
-    console.error('MediaPipe Hands not loaded');
+    console.error('[HandTracker] MediaPipe Hands not loaded');
     updateError('MediaPipe failed to load. Check your internet connection.');
     return;
   }
@@ -440,18 +444,22 @@ function startMediaPipe() {
   // eslint-disable-next-line no-undef
   handsInstance = new Hands({
     locateFile: (file) =>
-      `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`,
+      `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
   });
 
   handsInstance.setOptions({
     maxNumHands: 1,
     modelComplexity: isMobile ? 0 : 1,
-    minDetectionConfidence: 0.6,
+    minDetectionConfidence: 0.5,
     minTrackingConfidence: 0.5,
   });
 
   handsInstance.onResults((results) => {
     // Store landmarks — the render loop reads them
+    const handCount = results.multiHandLandmarks ? results.multiHandLandmarks.length : 0;
+    if (handCount > 0) {
+      console.log('[HandTracker] Hands detected:', handCount);
+    }
     state.hands = results.multiHandLandmarks || [];
   });
 
@@ -468,10 +476,13 @@ function startMediaPipe() {
     },
     width: isMobile ? 640 : 1280,
     height: isMobile ? 480 : 720,
+    facingMode: 'user',
   });
 
-  cameraInstance.start().catch((err) => {
-    console.error('Camera start failed:', err);
+  cameraInstance.start().then(() => {
+    console.log('[HandTracker] Camera started successfully');
+  }).catch((err) => {
+    console.error('[HandTracker] Camera start failed:', err);
     updateError('Camera access denied. Please allow camera access and reload.');
   });
 }

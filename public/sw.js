@@ -24,17 +24,11 @@ const APP_SHELL = [
 ];
 
 // MediaPipe CDN files (loaded in index.html via <script> tags)
+// Using unpinned versions — matches locateFile URL in hand-tracker.js
 const MEDIAPIPE_CDN = [
-  'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.min.js',
-  'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.min.js',
-  'https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1675466124/drawing_utils.min.js',
-  // MediaPipe WASM and model files (loaded dynamically by hands.min.js)
-  'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands_solution_packed_assets_loader.js',
-  'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands_solution_packed_assets.data',
-  'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.binarypb',
-  'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hand_landmark_full.tflite',
-  'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands_solution_simd_wasm_bin.js',
-  'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands_solution_simd_wasm_bin.wasm',
+  'https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js',
+  'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.min.js',
+  'https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.min.js',
 ];
 
 // Install: cache app shell and MediaPipe CDN
