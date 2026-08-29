@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="80" fill="#0a0a0f"/>
+  <!-- Hand silhouette -->
+  <g transform="translate(128, 80)" fill="none" stroke="#00ffcc" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Index finger pointing up -->
+    <line x1="128" y1="280" x2="128" y2="100"/>
+    <!-- Middle finger -->
+    <line x1="168" y1="280" x2="168" y2="140"/>
+    <!-- Ring finger -->
+    <line x1="208" y1="280" x2="208" y2="180"/>
+    <!-- Pinky -->
+    <line x1="248" y1="280" x2="248" y2="200"/>
+    <!-- Thumb -->
+    <line x1="88" y1="240" x2="48" y2="180"/>
+    <!-- Palm -->
+    <path d="M88 240 L128 280 L248 280 L280 240 L280 320 L80 320 Z" fill="rgba(0,255,204,0.1)"/>
+  </g>
+  <!-- Drawing stroke -->
+  <path d="M160 380 Q200 340 240 360 Q280 380 320 340 Q360 300 400 320" fill="none" stroke="#ff0055" stroke-width="8" stroke-linecap="round" opacity="0.8"/>
+  <!-- Glow dot at fingertip -->
+  <circle cx="256" cy="180" r="12" fill="#00ffcc" opacity="0.9"/>
+  <circle cx="256" cy="180" r="24" fill="#00ffcc" opacity="0.3"/>
+</svg>

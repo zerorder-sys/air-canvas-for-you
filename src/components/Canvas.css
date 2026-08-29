@@ -1,0 +1,46 @@
+/* ─── Canvas layers ────────────────────────────────────────────────────────── */
+.canvas-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+}
+
+.input-video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+  z-index: 0;
+  filter: brightness(0.65) contrast(1.05);
+  pointer-events: none;
+}
+
+.output-canvas,
+.draw-canvas,
+.cursor-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.output-canvas {
+  z-index: 1;
+  transform: scaleX(-1);
+}
+
+.draw-canvas {
+  z-index: 2;
+  transform: scaleX(-1);
+}
+
+.cursor-canvas {
+  z-index: 3;
+}
