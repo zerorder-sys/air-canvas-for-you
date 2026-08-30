@@ -7,19 +7,14 @@ const COLORS = [
   { value: '#22c55e', label: 'Green' },
   { value: '#eab308', label: 'Yellow' },
   { value: '#ffffff', label: 'White' },
-  { value: '#bf5af2', label: 'Neon Purple' },
+  { value: '#bf5af2', label: 'Purple' },
 ];
 
 export default function ControlPanel({
-  color,
-  onColorChange,
-  brushSize,
-  onBrushSizeChange,
-  isErasing,
-  onToggleEraser,
-  onUndo,
-  onClear,
-  onDownload,
+  color, onColorChange,
+  brushSize, onBrushSizeChange,
+  isErasing, onToggleEraser,
+  onUndo, onClear, onDownload,
 }) {
   const handleSize = useCallback(
     (e) => onBrushSizeChange(Number(e.target.value)),
@@ -27,15 +22,13 @@ export default function ControlPanel({
   );
 
   return (
-    <div className="control-panel">
-      {/* Color palette */}
-      <div className="ctrl-group">
+    <div className="ctrl-panel">
+      <div className="ctrl-group colors">
         {COLORS.map((c) => (
           <button
             key={c.value}
             className={`color-btn${color === c.value && !isErasing ? ' active' : ''}`}
-            style={{ background: c.value, color: c.value }}
-            data-color={c.value}
+            style={{ background: c.value }}
             title={c.label}
             onClick={() => onColorChange(c.value)}
           />
@@ -44,7 +37,6 @@ export default function ControlPanel({
 
       <div className="divider" />
 
-      {/* Brush size */}
       <div className="ctrl-group">
         <div className="slider-wrap">
           <label>Size</label>
@@ -61,23 +53,16 @@ export default function ControlPanel({
 
       <div className="divider" />
 
-      {/* Action buttons */}
-      <div className="ctrl-group">
+      <div className="ctrl-group actions">
         <button
           className={`ctrl-btn${isErasing ? ' active' : ''}`}
           onClick={onToggleEraser}
         >
-          🧹 Eraser
+          Eraser
         </button>
-        <button className="ctrl-btn" onClick={onUndo}>
-          ↩ Undo
-        </button>
-        <button className="ctrl-btn danger" onClick={onClear}>
-          ✕ Clear
-        </button>
-        <button className="ctrl-btn download" onClick={onDownload}>
-          💾 Save
-        </button>
+        <button className="ctrl-btn" onClick={onUndo}>Undo</button>
+        <button className="ctrl-btn danger" onClick={onClear}>Clear</button>
+        <button className="ctrl-btn save" onClick={onDownload}>Save</button>
       </div>
     </div>
   );

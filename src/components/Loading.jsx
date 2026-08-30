@@ -1,10 +1,10 @@
 import './Loading.css';
 
-export default function Loading({ message = 'Loading hand tracking model…' }) {
+export default function Loading({ message }) {
   return (
     <div className="loading-overlay">
       <div className="spinner" />
-      <p>{message}</p>
+      <p>{message || 'Loading hand tracking model...'}</p>
     </div>
   );
 }

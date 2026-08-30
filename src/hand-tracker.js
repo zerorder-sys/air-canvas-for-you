@@ -1,606 +1,347 @@
 import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 
-// ─── Shared mutable state ────────────────────────────────────────────────────
-const cfg = {
-  color: '#ff0055',
-  brushSize: 8,
-  isErasing: false,
-};
-
-// ─── DOM + canvas refs (populated by init()) ─────────────────────────────────
-let videoEl = null;
-let ctxOut = null;
-let ctxDraw = null;
-let ctxCursor = null;
-let canvasDraw = null;
-let canvasOut = null;
-
-// ─── Runtime state ───────────────────────────────────────────────────────────
-const state = {
-  hands: [],
-  isPenDown: false,
-  prevPt: null,
-  undoHistory: [],
-  frameCount: 0,
-  lastFpsTime: performance.now(),
-};
-
-let animFrameId = null;
-let handLandmarker = null;
-let stream = null;
-let lastVideoTime = -1;
-
-// ─── Landmark smoothing (reduces jitter on mobile) ──────────────────────────
+const MODEL_URL = '/models/hand_landmarker.task';
+const WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm';
 const SMOOTH_FRAMES = 3;
-const landmarkBuffer = [];
-
-function smoothLandmarks(raw) {
-  landmarkBuffer.push(raw.map(l => ({ x: l.x, y: l.y, z: l.z })));
-  if (landmarkBuffer.length > SMOOTH_FRAMES) landmarkBuffer.shift();
-  if (landmarkBuffer.length === 1) return raw;
-
-  const count = landmarkBuffer.length;
-  return raw.map((_, i) => ({
-    x: landmarkBuffer.reduce((s, f) => s + f[i].x, 0) / count,
-    y: landmarkBuffer.reduce((s, f) => s + f[i].y, 0) / count,
-    z: landmarkBuffer.reduce((s, f) => s + f[i].z, 0) / count,
-  }));
-}
-
-// ─── Undo stack ──────────────────────────────────────────────────────────────
 const MAX_UNDO = 30;
 
-function pushSnapshot() {
-  if (!canvasDraw || !ctxDraw) return;
-  try {
-    state.undoHistory.push(ctxDraw.getImageData(0, 0, canvasDraw.width, canvasDraw.height));
-    if (state.undoHistory.length > MAX_UNDO) state.undoHistory.shift();
-  } catch {}
-}
+export function createHandTracker(videoEl, drawCanvas, cursorCanvas, callbacks) {
+  const { onReady, onError, onStatus, onMode, onFps } = callbacks;
 
-function undo() {
-  if (state.undoHistory.length > 0 && ctxDraw) {
-    ctxDraw.putImageData(state.undoHistory.pop(), 0, 0);
+  let drawCtx = drawCanvas.getContext('2d', { willReadFrequently: true });
+  let cursorCtx = cursorCanvas.getContext('2d');
+  let handLandmarker = null;
+  let stream = null;
+  let rafId = null;
+  let lastVideoTime = -1;
+  let frameCount = 0;
+  let lastFpsTime = performance.now();
+
+  const cfg = { color: '#ff0055', brushSize: 6, isErasing: false };
+
+  let isPenDown = false;
+  let prevPoint = null;
+  const undoStack = [];
+
+  const landmarkBuffer = [];
+  let cursorPhase = 0;
+
+  function smoothLandmarks(raw) {
+    landmarkBuffer.push(raw.map(l => ({ x: l.x, y: l.y, z: l.z })));
+    if (landmarkBuffer.length > SMOOTH_FRAMES) landmarkBuffer.shift();
+    if (landmarkBuffer.length === 1) return raw;
+    const n = landmarkBuffer.length;
+    return raw.map((_, i) => ({
+      x: landmarkBuffer.reduce((s, f) => s + f[i].x, 0) / n,
+      y: landmarkBuffer.reduce((s, f) => s + f[i].y, 0) / n,
+      z: landmarkBuffer.reduce((s, f) => s + f[i].z, 0) / n,
+    }));
   }
-  return state.undoHistory.length;
-}
 
-function clearCanvas() {
-  if (!ctxDraw || !canvasDraw) return 0;
-  pushSnapshot();
-  ctxDraw.clearRect(0, 0, canvasDraw.width, canvasDraw.height);
-  return state.undoHistory.length;
-}
-
-function download() {
-  if (!canvasDraw || !videoEl) return;
-  const merge = document.createElement('canvas');
-  merge.width = canvasDraw.width;
-  merge.height = canvasDraw.height;
-  const mCtx = merge.getContext('2d');
-
-  mCtx.fillStyle = '#0a0a0f';
-  mCtx.fillRect(0, 0, merge.width, merge.height);
-
-  // Camera feed (manual flip to match CSS-mirrored on-screen appearance)
-  mCtx.save();
-  mCtx.translate(merge.width, 0);
-  mCtx.scale(-1, 1);
-  mCtx.drawImage(videoEl, 0, 0, merge.width, merge.height);
-  mCtx.restore();
-
-  mCtx.fillStyle = 'rgba(10,10,15,0.15)';
-  mCtx.fillRect(0, 0, merge.width, merge.height);
-
-  // Drawing layer (manual flip to match CSS-mirrored on-screen appearance)
-  mCtx.save();
-  mCtx.translate(merge.width, 0);
-  mCtx.scale(-1, 1);
-  mCtx.drawImage(canvasDraw, 0, 0);
-  mCtx.restore();
-
-  const link = document.createElement('a');
-  link.download = `air-canvas-${Date.now()}.png`;
-  link.href = merge.toDataURL('image/png');
-  link.click();
-}
-
-// ─── Resize handler ──────────────────────────────────────────────────────────
-function handleResize() {
-  if (!canvasOut || !canvasDraw) return;
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-
-  for (const c of [canvasOut, canvasDraw]) {
-    let saved = null;
-    if (c.width > 0 && c.height > 0) {
-      const ctx = c.getContext('2d', { willReadFrequently: true });
-      try { saved = ctx.getImageData(0, 0, c.width, c.height); } catch {}
-    }
-
-    c.width = w;
-    c.height = h;
-    c.style.width = w + 'px';
-    c.style.height = h + 'px';
-
-    if (saved) {
-      const ctx = c.getContext('2d');
-      ctx.putImageData(saved, 0, 0);
-    }
+  function pushUndo() {
+    try {
+      undoStack.push(drawCtx.getImageData(0, 0, drawCanvas.width, drawCanvas.height));
+      if (undoStack.length > MAX_UNDO) undoStack.shift();
+    } catch {}
   }
-}
 
-// ─── Finger extension detection ──────────────────────────────────────────────
-function dist(a, b) {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
+  function fingerExtended(hand, tipIdx, pipIdx) {
+    const tip = hand[tipIdx];
+    const pip = hand[pipIdx];
+    const wrist = hand[0];
+    return Math.hypot(tip.x - wrist.x, tip.y - wrist.y) >
+           Math.hypot(pip.x - wrist.x, pip.y - wrist.y) * 1.15;
+  }
 
-function fingerExtended(hand, tipIdx, mcpIdx) {
-  return dist(hand[tipIdx], hand[0]) > dist(hand[mcpIdx], hand[0]) * 1.2;
-}
+  function classifyGesture(hand) {
+    const indexUp = fingerExtended(hand, 8, 6);
+    const middleUp = fingerExtended(hand, 12, 10);
 
-/**
- * Gesture classifier — uses FINGER POSE, not pinch.
- *
- *   Index UP + Middle DOWN → DRAW (point to draw)
- *   Index UP + Middle UP (close together) → HOVER (pause, show cursor)
- *   Everything else → IDLE (pen up)
- */
-function classifyGesture(hand) {
-  const iE = fingerExtended(hand, 8, 5);
-  const mE = fingerExtended(hand, 12, 9);
-
-  if (iE && !mE) {
-    if (!state.isPenDown) {
-      state.isPenDown = true;
+    if (indexUp && !middleUp) {
+      if (!isPenDown) isPenDown = true;
       return 'draw';
     }
-    return 'draw';
-  }
-
-  // Index was drawing but now middle came up → end stroke
-  if (state.isPenDown && iE && mE) {
-    state.isPenDown = false;
-    return 'hover';
-  }
-
-  // Index UP + Middle UP (close together) → HOVER
-  if (iE && mE) {
-    const d = dist(hand[8], hand[12]);
-    if (d < 0.10) return 'hover';
-  }
-
-  // Fingers went down → end stroke
-  if (state.isPenDown) {
-    state.isPenDown = false;
+    if (isPenDown && indexUp && middleUp) {
+      isPenDown = false;
+      return 'hover';
+    }
+    if (indexUp && middleUp) {
+      const d = Math.hypot(hand[8].x - hand[12].x, hand[8].y - hand[12].y);
+      if (d < 0.08) return 'hover';
+    }
+    if (isPenDown) {
+      isPenDown = false;
+      return 'idle';
+    }
     return 'idle';
   }
 
-  return 'idle';
-}
-
-// ─── Drawing strokes ─────────────────────────────────────────────────────────
-function beginStroke(pt) {
-  state.prevPt = pt;
-}
-
-function continueStroke(pt) {
-  if (!state.prevPt || !ctxDraw) {
-    beginStroke(pt);
-    return;
-  }
-  const from = state.prevPt;
-  const to = pt;
-  if (Math.hypot(to.x - from.x, to.y - from.y) < 1) return;
-
-  const midX = (from.x + to.x) / 2;
-  const midY = (from.y + to.y) / 2;
-
-  ctxDraw.beginPath();
-  ctxDraw.moveTo(from.x, from.y);
-  ctxDraw.quadraticCurveTo(from.x, from.y, midX, midY);
-
-  if (cfg.isErasing) {
-    ctxDraw.globalCompositeOperation = 'destination-out';
-    ctxDraw.strokeStyle = 'rgba(0,0,0,1)';
-    ctxDraw.lineWidth = cfg.brushSize * 4;
-  } else {
-    ctxDraw.globalCompositeOperation = 'source-over';
-    ctxDraw.strokeStyle = cfg.color;
-    ctxDraw.lineWidth = cfg.brushSize;
+  function drawStroke(from, to) {
+    drawCtx.beginPath();
+    drawCtx.moveTo(from.x, from.y);
+    drawCtx.lineTo(to.x, to.y);
+    if (cfg.isErasing) {
+      drawCtx.globalCompositeOperation = 'destination-out';
+      drawCtx.strokeStyle = 'rgba(0,0,0,1)';
+      drawCtx.lineWidth = cfg.brushSize * 4;
+    } else {
+      drawCtx.globalCompositeOperation = 'source-over';
+      drawCtx.strokeStyle = cfg.color;
+      drawCtx.lineWidth = cfg.brushSize;
+    }
+    drawCtx.lineCap = 'round';
+    drawCtx.lineJoin = 'round';
+    drawCtx.stroke();
   }
 
-  ctxDraw.lineCap = 'round';
-  ctxDraw.lineJoin = 'round';
-  ctxDraw.stroke();
-
-  state.prevPt = to;
-}
-
-function endStroke() {
-  if (state.isPenDown || state.prevPt !== null) {
-    state.isPenDown = false;
-    state.prevPt = null;
-    pushSnapshot();
-  }
-}
-
-// ─── Cursor drawing — large glowing round indicator ──────────────────────────
-let cursorPhase = 0;
-
-function drawCursor(hand) {
-  if (!ctxCursor || !hand || !hand[8]) return;
-
-  const index = hand[8];
-  const x = index.x * window.innerWidth;
-  const y = index.y * window.innerHeight;
-
-  cursorPhase = (cursorPhase + 0.1) % (Math.PI * 2);
-  const pulse = Math.sin(cursorPhase);
-
-  const brushR = Math.max(6, cfg.brushSize * 0.8);
-  const outerR = brushR + 18 + pulse * 3;
-
-  ctxCursor.save();
-  ctxCursor.clearRect(0, 0, window.innerWidth, window.innerHeight);
-
-  if (cfg.isErasing) {
-    // ── Eraser cursor: large red hollow circle with crosshair ──
-    const eraserR = brushR * 3 + pulse * 2;
-    ctxCursor.beginPath();
-    ctxCursor.arc(x, y, eraserR, 0, Math.PI * 2);
-    ctxCursor.strokeStyle = 'rgba(255,100,100,0.8)';
-    ctxCursor.lineWidth = 2.5;
-    ctxCursor.shadowBlur = 16;
-    ctxCursor.shadowColor = 'rgba(255,100,100,0.6)';
-    ctxCursor.globalAlpha = 0.9;
-    ctxCursor.stroke();
-
-    // Crosshair
-    ctxCursor.setLineDash([]);
-    ctxCursor.lineWidth = 1.5;
-    ctxCursor.globalAlpha = 0.5;
-    ctxCursor.strokeStyle = 'rgba(255,100,100,0.7)';
-    ctxCursor.beginPath();
-    ctxCursor.moveTo(x - 8, y); ctxCursor.lineTo(x + 8, y);
-    ctxCursor.stroke();
-    ctxCursor.beginPath();
-    ctxCursor.moveTo(x, y - 8); ctxCursor.lineTo(x, y + 8);
-    ctxCursor.stroke();
-  } else if (state.isPenDown) {
-    // ── Drawing cursor: solid colored glow ring + center dot ──
-    // Outer glow halo
-    ctxCursor.beginPath();
-    ctxCursor.arc(x, y, outerR + 6, 0, Math.PI * 2);
-    ctxCursor.strokeStyle = cfg.color;
-    ctxCursor.lineWidth = 1;
-    ctxCursor.shadowBlur = 30;
-    ctxCursor.shadowColor = cfg.color;
-    ctxCursor.globalAlpha = 0.25 + pulse * 0.1;
-    ctxCursor.stroke();
-
-    // Main ring
-    ctxCursor.beginPath();
-    ctxCursor.arc(x, y, outerR, 0, Math.PI * 2);
-    ctxCursor.strokeStyle = cfg.color;
-    ctxCursor.lineWidth = 3;
-    ctxCursor.shadowBlur = 20;
-    ctxCursor.shadowColor = cfg.color;
-    ctxCursor.globalAlpha = 0.95;
-    ctxCursor.stroke();
-
-    // Brush size preview circle (inner)
-    ctxCursor.beginPath();
-    ctxCursor.arc(x, y, brushR * 0.7, 0, Math.PI * 2);
-    ctxCursor.strokeStyle = cfg.color;
-    ctxCursor.lineWidth = 1.5;
-    ctxCursor.shadowBlur = 10;
-    ctxCursor.globalAlpha = 0.6;
-    ctxCursor.stroke();
-
-    // Center dot
-    ctxCursor.beginPath();
-    ctxCursor.arc(x, y, 3, 0, Math.PI * 2);
-    ctxCursor.fillStyle = '#ffffff';
-    ctxCursor.shadowBlur = 8;
-    ctxCursor.shadowColor = '#ffffff';
-    ctxCursor.globalAlpha = 1;
-    ctxCursor.fill();
-  } else {
-    // ── Hover/Idle cursor: spinning dashed glow ring + center dot ──
-    // Outer glow
-    ctxCursor.beginPath();
-    ctxCursor.arc(x, y, outerR + 4, 0, Math.PI * 2);
-    ctxCursor.strokeStyle = 'rgba(255,255,255,0.15)';
-    ctxCursor.lineWidth = 1;
-    ctxCursor.shadowBlur = 20;
-    ctxCursor.shadowColor = 'rgba(255,255,255,0.3)';
-    ctxCursor.globalAlpha = 0.4 + pulse * 0.15;
-    ctxCursor.stroke();
-
-    // Spinning dashed ring
-    ctxCursor.beginPath();
-    ctxCursor.arc(x, y, outerR, 0, Math.PI * 2);
-    ctxCursor.setLineDash([6, 7]);
-    ctxCursor.lineDashOffset = -cursorPhase * 10;
-    ctxCursor.strokeStyle = 'rgba(255,255,255,0.7)';
-    ctxCursor.lineWidth = 2;
-    ctxCursor.shadowBlur = 12;
-    ctxCursor.shadowColor = 'rgba(255,255,255,0.5)';
-    ctxCursor.globalAlpha = 0.8;
-    ctxCursor.stroke();
-
-    // Center dot with current color
-    ctxCursor.setLineDash([]);
-    ctxCursor.beginPath();
-    ctxCursor.arc(x, y, 3, 0, Math.PI * 2);
-    ctxCursor.fillStyle = cfg.color;
-    ctxCursor.shadowBlur = 10;
-    ctxCursor.shadowColor = cfg.color;
-    ctxCursor.globalAlpha = 1;
-    ctxCursor.fill();
-
-    // Inner ring showing brush size
-    ctxCursor.beginPath();
-    ctxCursor.arc(x, y, brushR * 0.7, 0, Math.PI * 2);
-    ctxCursor.strokeStyle = cfg.color;
-    ctxCursor.lineWidth = 1;
-    ctxCursor.shadowBlur = 6;
-    ctxCursor.shadowColor = cfg.color;
-    ctxCursor.globalAlpha = 0.4;
-    ctxCursor.stroke();
+  function endStroke() {
+    if (isPenDown || prevPoint !== null) {
+      isPenDown = false;
+      prevPoint = null;
+      pushUndo();
+    }
   }
 
-  ctxCursor.restore();
-}
+  function drawCursor(x, y, gesture) {
+    cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
+    cursorCtx.save();
 
-// ─── Render loop — runs detection + drawing in RAF ───────────────────────────
-function renderLoop() {
-  animFrameId = requestAnimationFrame(renderLoop);
+    const brushR = Math.max(4, cfg.brushSize * 0.7);
 
-  if (!ctxOut || !ctxDraw || !canvasOut || !canvasDraw || !videoEl) return;
+    if (gesture === 'draw') {
+      cursorCtx.beginPath();
+      cursorCtx.arc(x, y, brushR, 0, Math.PI * 2);
+      cursorCtx.fillStyle = cfg.color;
+      cursorCtx.globalAlpha = 0.9;
+      cursorCtx.fill();
+      cursorCtx.beginPath();
+      cursorCtx.arc(x, y, 3, 0, Math.PI * 2);
+      cursorCtx.fillStyle = '#fff';
+      cursorCtx.globalAlpha = 1;
+      cursorCtx.fill();
+    } else if (gesture === 'hover') {
+      cursorPhase = (cursorPhase + 0.08) % (Math.PI * 2);
+      const pulse = Math.sin(cursorPhase);
+      const r = brushR + 12 + pulse * 3;
+      cursorCtx.beginPath();
+      cursorCtx.arc(x, y, r, 0, Math.PI * 2);
+      cursorCtx.strokeStyle = 'rgba(255,255,255,0.7)';
+      cursorCtx.lineWidth = 2;
+      cursorCtx.setLineDash([5, 5]);
+      cursorCtx.lineDashOffset = -cursorPhase * 8;
+      cursorCtx.stroke();
+      cursorCtx.setLineDash([]);
+      cursorCtx.beginPath();
+      cursorCtx.arc(x, y, 3, 0, Math.PI * 2);
+      cursorCtx.fillStyle = cfg.color;
+      cursorCtx.fill();
+    } else {
+      cursorCtx.beginPath();
+      cursorCtx.arc(x, y, 8, 0, Math.PI * 2);
+      cursorCtx.strokeStyle = 'rgba(255,255,255,0.3)';
+      cursorCtx.lineWidth = 1.5;
+      cursorCtx.stroke();
+      cursorCtx.beginPath();
+      cursorCtx.arc(x, y, 2, 0, Math.PI * 2);
+      cursorCtx.fillStyle = 'rgba(255,255,255,0.5)';
+      cursorCtx.fill();
+    }
 
-  const w = canvasOut.width;
-  const h = canvasOut.height;
+    cursorCtx.restore();
+  }
 
-  // --- Hand detection ---
-  if (handLandmarker && videoEl.readyState >= 2) {
+  function renderLoop() {
+    rafId = requestAnimationFrame(renderLoop);
+
+    const w = drawCanvas.width;
+    const h = drawCanvas.height;
+
+    if (!handLandmarker || videoEl.readyState < 2) return;
+
     const now = videoEl.currentTime;
     if (now !== lastVideoTime) {
       lastVideoTime = now;
       try {
         const results = handLandmarker.detectForVideo(videoEl, performance.now());
-        if (results.landmarks && results.landmarks.length > 0) {
-          state.hands = results.landmarks.map(lm => smoothLandmarks(lm));
-        } else {
-          state.hands = [];
+        const hands = results.landmarks && results.landmarks.length > 0
+          ? results.landmarks.map(lm => smoothLandmarks(lm))
+          : [];
+
+        if (hands.length === 0) {
           landmarkBuffer.length = 0;
+          endStroke();
+          if (onStatus) onStatus('No hand detected');
+          if (onMode) onMode('idle');
+          drawCursor(w / 2, h / 2, 'idle');
+          return;
         }
-      } catch {
-        // Swallow frame errors
-      }
+
+        const hand = hands[0];
+        if (onStatus) onStatus('Hand tracked');
+
+        const gesture = classifyGesture(hand);
+        if (onMode) onMode(gesture);
+
+        const tipX = hand[8].x * w;
+        const tipY = hand[8].y * h;
+
+        if (gesture === 'draw') {
+          if (prevPoint) {
+            drawStroke(prevPoint, { x: tipX, y: tipY });
+          } else {
+            prevPoint = { x: tipX, y: tipY };
+          }
+        } else {
+          endStroke();
+        }
+
+        prevPoint = gesture === 'draw' ? { x: tipX, y: tipY } : null;
+        drawCursor(tipX, tipY, gesture);
+      } catch {}
+    }
+
+    frameCount++;
+    const t = performance.now();
+    if (t - lastFpsTime >= 1000) {
+      if (onFps) onFps(frameCount);
+      frameCount = 0;
+      lastFpsTime = t;
     }
   }
 
-  // --- Draw camera feed (bright, no heavy darkening) ---
-  ctxOut.clearRect(0, 0, w, h);
-  ctxOut.drawImage(videoEl, 0, 0, w, h);
-
-  // Very subtle darken — just enough so strokes are visible
-  ctxOut.fillStyle = 'rgba(0,0,0,0.06)';
-  ctxOut.fillRect(0, 0, w, h);
-
-  // --- FPS counter ---
-  state.frameCount++;
-  const t = performance.now();
-  if (t - state.lastFpsTime >= 1000) {
-    const fpsEl = document.getElementById('fps-counter');
-    if (fpsEl) fpsEl.textContent = state.frameCount + ' FPS';
-    state.frameCount = 0;
-    state.lastFpsTime = t;
-  }
-
-  // --- Clear cursor canvas ---
-  if (ctxCursor) {
-    ctxCursor.clearRect(0, 0, window.innerWidth, window.innerHeight);
-  }
-
-  const hand = state.hands[0];
-
-  if (hand) {
-    const dot = document.getElementById('status-dot');
-    const txt = document.getElementById('status-text');
-    if (dot && !dot.classList.contains('connected')) dot.classList.add('connected');
-    if (txt) txt.textContent = 'Hand tracked';
-
-    const gesture = classifyGesture(hand);
-    const badge = document.getElementById('mode-badge');
-
-    if (gesture === 'draw') {
-      const lm = hand[8]; // index fingertip
-      const pt = { x: lm.x * w, y: lm.y * h };
-
-      if (state.prevPt === null) {
-        beginStroke(pt);
-      } else {
-        continueStroke(pt);
-      }
-
-      if (badge) {
-        badge.textContent = '✏ DRAW';
-        badge.className = 'mode-badge draw';
-      }
-    } else if (gesture === 'hover') {
-      endStroke();
-      state.prevPt = null;
-      if (badge) {
-        badge.textContent = '👆 HOVER';
-        badge.className = 'mode-badge hover';
-      }
-    } else {
-      endStroke();
-      state.prevPt = null;
-      if (badge) {
-        badge.textContent = '';
-        badge.className = 'mode-badge';
-      }
-    }
-
-    drawCursor(hand);
-  } else {
-    endStroke();
-    state.prevPt = null;
-
-    const dot = document.getElementById('status-dot');
-    const txt = document.getElementById('status-text');
-    if (dot) dot.classList.remove('connected');
-    if (txt) txt.textContent = 'No hand detected';
-
-    const badge = document.getElementById('mode-badge');
-    if (badge) {
-      badge.textContent = '';
-      badge.className = 'mode-badge';
+  function handleResize() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    for (const c of [drawCanvas, cursorCanvas]) {
+      c.width = w;
+      c.height = h;
     }
   }
-}
 
-// ─── Callbacks (set by init) ─────────────────────────────────────────────────
-let onReadyCb = null;
-let onErrorCb = null;
-
-function updateError(msg) {
-  if (onErrorCb) onErrorCb(msg);
-}
-
-function updateStatus(msg) {
-  const txt = document.getElementById('status-text');
-  if (txt) txt.textContent = msg;
-}
-
-// ─── Start camera ────────────────────────────────────────────────────────────
-async function startCamera() {
-  const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-
-  const constraints = {
-    video: {
-      facingMode: 'user',
-      width: { ideal: isMobile ? 1280 : 1920 },
-      height: { ideal: isMobile ? 720 : 1080 },
-      frameRate: { ideal: 30 },
-    },
-    audio: false,
-  };
-
-  stream = await navigator.mediaDevices.getUserMedia(constraints);
-  videoEl.srcObject = stream;
-  await videoEl.play();
-}
-
-// ─── Initialize MediaPipe HandLandmarker ─────────────────────────────────────
-async function initMediaPipe() {
-  updateStatus('Loading AI model...');
-
-  const vision = await FilesetResolver.forVisionTasks(
-    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm'
-  );
-
-  // Try GPU first, fall back to CPU if GPU fails (some mobile GPUs crash)
-  try {
-    handLandmarker = await HandLandmarker.createFromOptions(vision, {
-      baseOptions: {
-        modelAssetPath: '/models/hand_landmarker.task',
-        delegate: 'GPU',
+  async function startCamera() {
+    const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: 'user',
+        width: { ideal: isMobile ? 1280 : 1920 },
+        height: { ideal: isMobile ? 720 : 1080 },
+        frameRate: { ideal: 30 },
       },
-      runningMode: 'VIDEO',
-      numHands: 1,
-      minHandDetectionConfidence: 0.5,
-      minHandPresenceConfidence: 0.5,
-      minTrackingConfidence: 0.5,
+      audio: false,
     });
-  } catch {
-    handLandmarker = await HandLandmarker.createFromOptions(vision, {
-      baseOptions: {
-        modelAssetPath: '/models/hand_landmarker.task',
-        delegate: 'CPU',
-      },
-      runningMode: 'VIDEO',
-      numHands: 1,
-      minHandDetectionConfidence: 0.5,
-      minHandPresenceConfidence: 0.5,
-      minTrackingConfidence: 0.5,
-    });
-  }
-}
-
-// ─── Public API ──────────────────────────────────────────────────────────────
-
-export function init(dom, callbacks = {}) {
-  videoEl = dom.video;
-  canvasOut = dom.canvasOut;
-  canvasDraw = dom.canvasDraw;
-
-  onReadyCb = callbacks.onReady || null;
-  onErrorCb = callbacks.onError || null;
-
-  ctxOut = canvasOut.getContext('2d');
-  ctxDraw = canvasDraw.getContext('2d', { willReadFrequently: true });
-  ctxCursor = dom.canvasCursor ? dom.canvasCursor.getContext('2d') : null;
-
-  handleResize();
-  window.addEventListener('resize', handleResize);
-
-  // Start render loop immediately
-  if (!animFrameId) {
-    animFrameId = requestAnimationFrame(renderLoop);
+    videoEl.srcObject = stream;
+    await videoEl.play();
   }
 
-  // Async init: camera → MediaPipe → start detecting
+  async function initMediaPipe() {
+    if (onStatus) onStatus('Loading AI model...');
+    const vision = await FilesetResolver.forVisionTasks(WASM_URL);
+
+    try {
+      handLandmarker = await HandLandmarker.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' },
+        runningMode: 'VIDEO',
+        numHands: 1,
+        minHandDetectionConfidence: 0.5,
+        minHandPresenceConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+      });
+    } catch {
+      handLandmarker = await HandLandmarker.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: MODEL_URL, delegate: 'CPU' },
+        runningMode: 'VIDEO',
+        numHands: 1,
+        minHandDetectionConfidence: 0.5,
+        minHandPresenceConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+      });
+    }
+  }
+
   async function boot() {
     try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        updateError('Camera requires HTTPS. Open this page over https:// or on localhost.');
+      if (!navigator.mediaDevices?.getUserMedia) {
+        if (onError) onError('Camera requires HTTPS. Open this page over https:// or on localhost.');
         return;
       }
-
       await startCamera();
       await initMediaPipe();
-
-      updateStatus('Show your hand to start drawing');
-      if (onReadyCb) onReadyCb();
+      if (onReady) onReady();
     } catch (err) {
-      if (err.name === 'NotAllowedError') {
-        updateError('Camera access denied. Please allow camera access and reload.');
-      } else if (err.name === 'NotFoundError') {
-        updateError('No camera found. Please connect a camera and reload.');
-      } else {
-        updateError('Failed to start: ' + (err.message || err));
+      if (onError) {
+        if (err.name === 'NotAllowedError') {
+          onError('Camera access denied. Please allow camera access and reload.');
+        } else if (err.name === 'NotFoundError') {
+          onError('No camera found. Please connect a camera and reload.');
+        } else {
+          onError('Failed to start: ' + (err.message || err));
+        }
       }
     }
   }
 
-  boot();
-
-  return { undo, clear: clearCanvas, download, getUndoCount: () => state.undoHistory.length, setConfig, destroy };
-}
-
-function setConfig(newCfg) {
-  if (newCfg.color !== undefined) cfg.color = newCfg.color;
-  if (newCfg.brushSize !== undefined) cfg.brushSize = newCfg.brushSize;
-  if (newCfg.isErasing !== undefined) cfg.isErasing = newCfg.isErasing;
-}
-
-function destroy() {
-  if (animFrameId) {
-    cancelAnimationFrame(animFrameId);
-    animFrameId = null;
+  function init() {
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    rafId = requestAnimationFrame(renderLoop);
+    boot();
   }
-  if (stream) {
-    stream.getTracks().forEach(t => t.stop());
-    stream = null;
+
+  function destroy() {
+    if (rafId) cancelAnimationFrame(rafId);
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    if (handLandmarker) handLandmarker.close();
+    window.removeEventListener('resize', handleResize);
   }
-  if (handLandmarker) {
-    handLandmarker.close();
-    handLandmarker = null;
+
+  function undo() {
+    if (undoStack.length > 0) {
+      drawCtx.putImageData(undoStack.pop(), 0, 0);
+    }
+    return undoStack.length;
   }
-  window.removeEventListener('resize', handleResize);
+
+  function clear() {
+    pushUndo();
+    drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+    return undoStack.length;
+  }
+
+  function download() {
+    const merge = document.createElement('canvas');
+    merge.width = drawCanvas.width;
+    merge.height = drawCanvas.height;
+    const mCtx = merge.getContext('2d');
+
+    mCtx.fillStyle = '#0a0a0f';
+    mCtx.fillRect(0, 0, merge.width, merge.height);
+
+    mCtx.save();
+    mCtx.translate(merge.width, 0);
+    mCtx.scale(-1, 1);
+    mCtx.drawImage(videoEl, 0, 0, merge.width, merge.height);
+    mCtx.restore();
+
+    mCtx.fillStyle = 'rgba(10,10,15,0.15)';
+    mCtx.fillRect(0, 0, merge.width, merge.height);
+
+    mCtx.save();
+    mCtx.translate(merge.width, 0);
+    mCtx.scale(-1, 1);
+    mCtx.drawImage(drawCanvas, 0, 0);
+    mCtx.restore();
+
+    const link = document.createElement('a');
+    link.download = `air-canvas-${Date.now()}.png`;
+    link.href = merge.toDataURL('image/png');
+    link.click();
+  }
+
+  function setConfig(newCfg) {
+    if (newCfg.color !== undefined) cfg.color = newCfg.color;
+    if (newCfg.brushSize !== undefined) cfg.brushSize = newCfg.brushSize;
+    if (newCfg.isErasing !== undefined) cfg.isErasing = newCfg.isErasing;
+  }
+
+  return { init, destroy, undo, clear, download, setConfig, getUndoCount: () => undoStack.length };
 }

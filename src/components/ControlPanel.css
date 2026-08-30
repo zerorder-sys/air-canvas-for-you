@@ -1,4 +1,4 @@
-.control-panel {
+.ctrl-panel {
   position: absolute;
   bottom: 20px;
   left: 50%;
@@ -7,13 +7,12 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 18px;
-  border-radius: 16px;
-  background: rgba(10, 10, 20, 0.75);
-  backdrop-filter: blur(24px) saturate(1.4);
-  -webkit-backdrop-filter: blur(24px) saturate(1.4);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  padding: 10px 16px;
+  border-radius: 14px;
+  background: rgba(10, 10, 20, 0.8);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   flex-wrap: wrap;
   justify-content: center;
   max-width: 96vw;
@@ -23,20 +22,17 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  flex-shrink: 0;
 }
 
 .divider {
   width: 1px;
   height: 24px;
   background: rgba(255, 255, 255, 0.1);
-  flex-shrink: 0;
 }
 
-/* ── Color buttons ─────────────────────────────── */
 .color-btn {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   border: 2.5px solid transparent;
   cursor: pointer;
@@ -44,27 +40,24 @@
   flex-shrink: 0;
 }
 
-.color-btn:active {
-  transform: scale(1.15);
-}
+.color-btn:active { transform: scale(1.15); }
 
 .color-btn.active {
   border-color: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 0 10px currentColor;
+  box-shadow: 0 0 8px currentColor;
   transform: scale(1.1);
 }
 
-/* ── Action buttons ────────────────────────────── */
 .ctrl-btn {
-  padding: 8px 14px;
-  border-radius: 10px;
+  padding: 7px 12px;
+  border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.06);
   color: rgba(255, 255, 255, 0.85);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.1s;
+  transition: background 0.15s, transform 0.1s;
   user-select: none;
   white-space: nowrap;
   font-family: inherit;
@@ -73,36 +66,18 @@
 .ctrl-btn:active {
   transform: scale(0.96);
   background: rgba(255, 255, 255, 0.15);
-  color: #fff;
 }
 
 .ctrl-btn.active {
   background: rgba(255, 255, 255, 0.2);
-  color: #fff;
   border-color: rgba(255, 255, 255, 0.3);
 }
 
-.ctrl-btn.danger {
-  border-color: rgba(239, 68, 68, 0.3);
-  color: #fca5a5;
-}
+.ctrl-btn.danger { color: #fca5a5; border-color: rgba(239, 68, 68, 0.3); }
+.ctrl-btn.danger:active { background: rgba(239, 68, 68, 0.3); }
+.ctrl-btn.save { color: #93c5fd; border-color: rgba(59, 130, 246, 0.3); }
+.ctrl-btn.save:active { background: rgba(59, 130, 246, 0.25); }
 
-.ctrl-btn.danger:active {
-  background: rgba(239, 68, 68, 0.3);
-  color: #fecaca;
-}
-
-.ctrl-btn.download {
-  border-color: rgba(59, 130, 246, 0.3);
-  color: #93c5fd;
-}
-
-.ctrl-btn.download:active {
-  background: rgba(59, 130, 246, 0.25);
-  color: #bfdbfe;
-}
-
-/* ── Brush size slider ─────────────────────────── */
 .slider-wrap {
   display: flex;
   align-items: center;
@@ -115,13 +90,12 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  white-space: nowrap;
 }
 
 .slider-wrap input[type='range'] {
   -webkit-appearance: none;
   appearance: none;
-  width: 90px;
+  width: 80px;
   height: 4px;
   border-radius: 2px;
   background: rgba(255, 255, 255, 0.15);
@@ -131,36 +105,34 @@
 
 .slider-wrap input[type='range']::-webkit-slider-thumb {
   -webkit-appearance: none;
-  appearance: none;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
   cursor: pointer;
 }
 
 .slider-wrap input[type='range']::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: #fff;
   border: none;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
   cursor: pointer;
 }
 
 .size-val {
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
   font-weight: 600;
-  min-width: 30px;
+  min-width: 28px;
   text-align: center;
 }
 
-/* ── Mobile ────────────────────────────────────── */
 @media (max-width: 640px) {
-  .control-panel {
+  .ctrl-panel {
     bottom: env(safe-area-inset-bottom, 10px);
     left: 8px;
     right: 8px;
@@ -168,33 +140,12 @@
     width: auto;
     max-width: none;
     gap: 6px;
-    padding: 10px 12px;
-    border-radius: 14px;
+    padding: 8px 10px;
   }
 
-  .color-btn {
-    width: 30px;
-    height: 30px;
-  }
-
-  .ctrl-btn {
-    padding: 9px 12px;
-    font-size: 13px;
-    min-height: 38px;
-  }
-
-  .slider-wrap input[type='range'] {
-    width: 70px;
-  }
-
-  .divider {
-    display: none;
-  }
-
-  /* Stack action buttons in a second row */
-  .ctrl-group:last-child {
-    width: 100%;
-    justify-content: center;
-    gap: 6px;
-  }
+  .color-btn { width: 28px; height: 28px; }
+  .ctrl-btn { padding: 8px 10px; font-size: 12px; min-height: 36px; }
+  .slider-wrap input[type='range'] { width: 60px; }
+  .divider { display: none; }
+  .ctrl-group.actions { width: 100%; justify-content: center; gap: 6px; }
 }

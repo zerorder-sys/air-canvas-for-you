@@ -1,19 +1,5 @@
-/**
- * Air Canvas Service Worker
- *
- * Caches:
- *   1. App shell (HTML, CSS, JS) — instant load on repeat visits
- *   2. MediaPipe CDN files — works offline after first load
- *   3. App icons
- *
- * Does NOT cache:
- *   - Camera stream (always live)
- *   - WebSocket connections (real-time)
- */
+const CACHE_NAME = 'air-canvas-v2';
 
-const CACHE_NAME = 'air-canvas-v1';
-
-// App shell files (served by Vite from /dist)
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -24,91 +10,59 @@ const APP_SHELL = [
   '/models/hand_landmarker.task',
 ];
 
-// MediaPipe WASM + model files (loaded at runtime by tasks-vision)
 const MEDIAPIPE_CDN = [
   'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm/vision_wasm_internal.wasm',
-  '/models/hand_landmarker.task',
 ];
 
-// Install: cache app shell and MediaPipe CDN
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(APP_SHELL).then(() => {
-        return Promise.allSettled(
-          MEDIAPIPE_CDN.map((url) =>
-            cache.add(url).catch(() => {})
-          )
-        );
-      });
-    })
+    caches.open(CACHE_NAME).then((cache) =>
+      cache.addAll(APP_SHELL).then(() =>
+        Promise.allSettled(MEDIAPIPE_CDN.map((url) => cache.add(url).catch(() => {})))
+      )
+    )
   );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
-        keys
-          .filter((key) => key !== CACHE_NAME)
-          .map((key) => caches.delete(key))
-      );
-    })
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+    )
   );
   self.clients.claim();
 });
 
-// Fetch: cache-first for app shell and CDN, network-first for everything else
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-  const url = new URL(request.url);
-
-  // Skip non-GET requests
   if (request.method !== 'GET') return;
 
-  // Skip camera/websocket URLs
+  const url = new URL(request.url);
   if (url.protocol === 'wss:' || url.protocol === 'ws:') return;
 
-  // For MediaPipe CDN and app shell: cache-first strategy
-  if (
-    url.hostname === 'cdn.jsdelivr.net' ||
-    url.hostname === location.hostname
-  ) {
+  if (url.hostname === 'cdn.jsdelivr.net' || url.hostname === location.hostname) {
     event.respondWith(
       caches.match(request).then((cached) => {
         if (cached) return cached;
-
-        return fetch(request)
-          .then((response) => {
-            // Don't cache if not successful
-            if (!response || response.status !== 200) return response;
-
-            // Clone and cache the response
-            const responseClone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(request, responseClone);
-            });
-
-            return response;
-          })
-          .catch(() => {
-            // Offline and not in cache — return a basic offline page for HTML
-            if (request.headers.get('accept')?.includes('text/html')) {
-              return new Response(
-                '<html><body style="background:#0a0a0f;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;text-align:center"><div><h1>Air Canvas</h1><p>You are offline. Please connect to the internet to use hand tracking.</p></div></body></html>',
-                { headers: { 'Content-Type': 'text/html' } }
-              );
-            }
-            return new Response('Offline', { status: 503 });
-          });
+        return fetch(request).then((response) => {
+          if (!response || response.status !== 200) return response;
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((c) => c.put(request, clone));
+          return response;
+        }).catch(() => {
+          if (request.headers.get('accept')?.includes('text/html')) {
+            return new Response(
+              '<html><body style="background:#0a0a0f;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;text-align:center"><div><h1>Air Canvas</h1><p>You are offline.</p></div></body></html>',
+              { headers: { 'Content-Type': 'text/html' } }
+            );
+          }
+          return new Response('Offline', { status: 503 });
+        });
       })
     );
     return;
   }
 
-  // For everything else: network-first
-  event.respondWith(
-    fetch(request).catch(() => caches.match(request))
-  );
+  event.respondWith(fetch(request).catch(() => caches.match(request)));
 });
