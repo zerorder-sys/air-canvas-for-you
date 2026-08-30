@@ -1,4 +1,4 @@
-const CACHE_NAME = 'air-canvas-v2';
+const CACHE_NAME = 'air-canvas-v3';
 
 const APP_SHELL = [
   '/',
@@ -41,6 +41,24 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.protocol === 'wss:' || url.protocol === 'ws:') return;
 
+  // For the main page: network-first so users always get the latest index.html
+  if (request.mode === 'navigate' || request.headers.get('accept')?.includes('text/html')) {
+    event.respondWith(
+      fetch(request).then((response) => {
+        if (response && response.status === 200) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((c) => c.put(request, clone));
+        }
+        return response;
+      }).catch(() => caches.match(request).then((c) => c || new Response(
+        '<html><body style="background:#0a0a0f;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;text-align:center"><div><h1>Air Canvas</h1><p>You are offline.</p></div></body></html>',
+        { headers: { 'Content-Type': 'text/html' } }
+      )))
+    );
+    return;
+  }
+
+  // For assets: cache-first
   if (url.hostname === 'cdn.jsdelivr.net' || url.hostname === location.hostname) {
     event.respondWith(
       caches.match(request).then((cached) => {
@@ -50,15 +68,7 @@ self.addEventListener('fetch', (event) => {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((c) => c.put(request, clone));
           return response;
-        }).catch(() => {
-          if (request.headers.get('accept')?.includes('text/html')) {
-            return new Response(
-              '<html><body style="background:#0a0a0f;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;text-align:center"><div><h1>Air Canvas</h1><p>You are offline.</p></div></body></html>',
-              { headers: { 'Content-Type': 'text/html' } }
-            );
-          }
-          return new Response('Offline', { status: 503 });
-        });
+        }).catch(() => new Response('Offline', { status: 503 }));
       })
     );
     return;
