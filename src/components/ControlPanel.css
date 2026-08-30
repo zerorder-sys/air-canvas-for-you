@@ -131,6 +131,31 @@
   color: #fff;
 }
 
+.custom-stamp-input {
+  width: 34px;
+  height: 30px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 16px;
+  text-align: center;
+  padding: 0;
+  outline: none;
+  flex-shrink: 0;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.custom-stamp-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.custom-stamp-input.active {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
+  color: #fff;
+}
+
 .slider-wrap {
   display: flex;
   align-items: center;

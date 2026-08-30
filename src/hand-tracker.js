@@ -19,7 +19,7 @@ export function createHandTracker(videoEl, outputCanvas, drawCanvas, cursorCanva
   let frameCount = 0;
   let lastFpsTime = performance.now();
 
-  const cfg = { color: '#ff0055', brushSize: 6, isErasing: false, stamp: null };
+  const cfg = { color: '#ff0055', brushSize: 6, isErasing: false, stamp: null, customStampChar: '' };
 
   let isPenDown = false;
   let prevPoint = null;
@@ -158,6 +158,12 @@ export function createHandTracker(videoEl, outputCanvas, drawCanvas, cursorCanva
         ctx.lineTo(-size * 0.6, 0);
         ctx.closePath();
         ctx.fill();
+        break;
+      case 'custom':
+        ctx.font = `${size * 2}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(cfg.customStampChar || '?', 0, 0);
         break;
     }
 
@@ -477,6 +483,7 @@ export function createHandTracker(videoEl, outputCanvas, drawCanvas, cursorCanva
     if (newCfg.brushSize !== undefined) cfg.brushSize = newCfg.brushSize;
     if (newCfg.isErasing !== undefined) cfg.isErasing = newCfg.isErasing;
     if (newCfg.stamp !== undefined) cfg.stamp = newCfg.stamp;
+    if (newCfg.customStampChar !== undefined) cfg.customStampChar = newCfg.customStampChar;
   }
 
   return { init, destroy, undo, clear, download, setConfig, getUndoCount: () => undoStack.length };

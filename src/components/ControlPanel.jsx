@@ -24,11 +24,23 @@ export default function ControlPanel({
   brushSize, onBrushSizeChange,
   isErasing, onToggleEraser,
   stamp, onStampChange,
+  customStampChar, onCustomStampChange,
   onUndo, onClear, onDownload,
 }) {
   const handleSize = useCallback(
     (e) => onBrushSizeChange(Number(e.target.value)),
     [onBrushSizeChange]
+  );
+
+  const handleCustomInput = useCallback(
+    (e) => {
+      const val = e.target.value;
+      if (val.length <= 1) {
+        onCustomStampChange(val);
+        if (val) onStampChange('custom');
+      }
+    },
+    [onCustomStampChange, onStampChange]
   );
 
   return (
@@ -76,6 +88,15 @@ export default function ControlPanel({
                 {s.icon}
               </button>
             ))}
+            <input
+              type="text"
+              className={`custom-stamp-input${stamp === 'custom' ? ' active' : ''}`}
+              value={customStampChar}
+              onChange={handleCustomInput}
+              placeholder="Aa"
+              maxLength={1}
+              title="Type a letter or emoji"
+            />
           </div>
         </div>
       )}
