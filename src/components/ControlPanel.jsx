@@ -94,7 +94,6 @@ export default function ControlPanel({
               value={customStampChar}
               onChange={handleCustomInput}
               placeholder="Aa"
-              maxLength={1}
               title="Type a letter or emoji"
             />
           </div>
