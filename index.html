@@ -7,15 +7,14 @@
     <meta name="theme-color" content="#0a0a0f" />
     <meta name="description" content="Draw in the air using hand gestures powered by AI hand tracking. No app download needed." />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Air Canvas" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <link rel="manifest" href="/manifest.json" />
     <title>Air Canvas</title>
-    <!-- MediaPipe CDN — latest stable versions (same as working IBahaaaldin/AIR-CANVAS) -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.min.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.min.js" crossorigin="anonymous"></script>
+    <!-- MediaPipe Tasks Vision (new API, better mobile support) -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.mjs" type="module" crossorigin="anonymous"></script>
   </head>
   <body>
     <div id="root"></div>

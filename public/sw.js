@@ -14,21 +14,19 @@
 const CACHE_NAME = 'air-canvas-v1';
 
 // App shell files (served by Vite from /dist)
-const APP_SHELL = [
-  '/',
+const APP_SHELL = [  '/',
   '/index.html',
   '/icon.svg',
   '/icon-192.png',
   '/icon-512.png',
   '/manifest.json',
+  '/models/hand_landmarker.task',
 ];
 
-// MediaPipe CDN files (loaded in index.html via <script> tags)
-// Using unpinned versions — matches locateFile URL in hand-tracker.js
+// MediaPipe WASM + model files (loaded at runtime by tasks-vision)
 const MEDIAPIPE_CDN = [
-  'https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js',
-  'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.min.js',
-  'https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.min.js',
+  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm/vision_wasm_internal.wasm',
+  '/models/hand_landmarker.task',
 ];
 
 // Install: cache app shell and MediaPipe CDN

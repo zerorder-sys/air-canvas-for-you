@@ -1,15 +1,14 @@
 /**
  * hand-tracker.js — Vanilla JS hand-tracking drawing engine
  *
- * Architecture (proven pattern from working air canvas projects):
- *   MediaPipe onResults → stores landmarks in plain object
- *   requestAnimationFrame → reads landmarks → gesture classification → canvas drawing
- *
- * Zero React state updates in the hot path. All canvas + DOM manipulation is direct.
+ * Uses @mediapipe/tasks-vision (new API, better mobile support).
+ * Architecture: detectForVideo in RAF render loop → gesture classification → canvas drawing.
+ * Zero React state updates in the hot path.
  */
 
+import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
+
 // ─── Shared mutable state ────────────────────────────────────────────────────
-// Updated by React via setConfig(). Read by the render loop.
 const cfg = {
   color: '#ff0055',
   brushSize: 6,
@@ -30,27 +29,46 @@ const state = {
   isPenDown: false,
   prevPt: null,
   undoHistory: [],
-  velocity: 0,
   frameCount: 0,
   lastFpsTime: performance.now(),
-  penUpPrevPt: null, // for smooth transition from pen-up to pen-down
 };
 
 let animFrameId = null;
-let cameraInstance = null;
-let handsInstance = null;
+let handLandmarker = null;
+let stream = null;
+let lastVideoTime = -1;
+
+// ─── Landmark smoothing (reduces jitter on mobile) ──────────────────────────
+const SMOOTH_FRAMES = 3;
+const landmarkBuffer = []; // Array of last SMOOTH_FRAMES landmark arrays
+
+function smoothLandmarks(raw) {
+  landmarkBuffer.push(raw.map(l => ({ x: l.x, y: l.y, z: l.z })));
+  if (landmarkBuffer.length > SMOOTH_FRAMES) landmarkBuffer.shift();
+  if (landmarkBuffer.length === 1) return raw;
+
+  // Average all buffered frames per landmark
+  const count = landmarkBuffer.length;
+  return raw.map((_, i) => ({
+    x: landmarkBuffer.reduce((s, f) => s + f[i].x, 0) / count,
+    y: landmarkBuffer.reduce((s, f) => s + f[i].y, 0) / count,
+    z: landmarkBuffer.reduce((s, f) => s + f[i].z, 0) / count,
+  }));
+}
 
 // ─── Pinch thresholds (hysteresis prevents flicker) ──────────────────────────
-const PINCH_ENTER = 0.06;
-const PINCH_EXIT = 0.09;
+const PINCH_ENTER = 0.07;
+const PINCH_EXIT = 0.10;
 
 // ─── Undo stack ──────────────────────────────────────────────────────────────
 const MAX_UNDO = 30;
 
 function pushSnapshot() {
   if (!canvasDraw || !ctxDraw) return;
-  state.undoHistory.push(ctxDraw.getImageData(0, 0, canvasDraw.width, canvasDraw.height));
-  if (state.undoHistory.length > MAX_UNDO) state.undoHistory.shift();
+  try {
+    state.undoHistory.push(ctxDraw.getImageData(0, 0, canvasDraw.width, canvasDraw.height));
+    if (state.undoHistory.length > MAX_UNDO) state.undoHistory.shift();
+  } catch (_) {}
 }
 
 function undo() {
@@ -74,7 +92,6 @@ function download() {
   merge.height = canvasDraw.height;
   const mCtx = merge.getContext('2d');
 
-  // Dark background
   mCtx.fillStyle = '#0a0a0f';
   mCtx.fillRect(0, 0, merge.width, merge.height);
 
@@ -85,7 +102,6 @@ function download() {
   mCtx.drawImage(videoEl, 0, 0, merge.width, merge.height);
   mCtx.restore();
 
-  // Slight dim overlay
   mCtx.fillStyle = 'rgba(10,10,15,0.25)';
   mCtx.fillRect(0, 0, merge.width, merge.height);
 
@@ -102,10 +118,6 @@ function download() {
   link.click();
 }
 
-function getUndoCount() {
-  return state.undoHistory.length;
-}
-
 // ─── Resize handler ──────────────────────────────────────────────────────────
 function handleResize() {
   if (!canvasOut || !canvasDraw) return;
@@ -113,13 +125,10 @@ function handleResize() {
   const h = window.innerHeight;
 
   for (const c of [canvasOut, canvasDraw]) {
-    // Save drawing content
     let saved = null;
     if (c.width > 0 && c.height > 0) {
-      const ctx = c.getContext('2d');
-      try {
-        saved = ctx.getImageData(0, 0, c.width, c.height);
-      } catch (_) {}
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      try { saved = ctx.getImageData(0, 0, c.width, c.height); } catch (_) {}
     }
 
     c.width = w;
@@ -127,7 +136,6 @@ function handleResize() {
     c.style.width = w + 'px';
     c.style.height = h + 'px';
 
-    // Restore drawing content
     if (saved) {
       const ctx = c.getContext('2d');
       ctx.putImageData(saved, 0, 0);
@@ -135,7 +143,7 @@ function handleResize() {
   }
 }
 
-// ─── Finger extension detection (distance-from-wrist, more robust than tip<pip) ──
+// ─── Finger extension detection ──────────────────────────────────────────────
 function dist(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
@@ -145,7 +153,6 @@ function fingerExtended(hand, tipIdx, mcpIdx) {
 }
 
 // ─── Gesture classifier ──────────────────────────────────────────────────────
-// Returns 'pinch-draw' | 'hover' | 'idle'
 function classifyGesture(hand) {
   const pinchDist = dist(hand[4], hand[8]); // thumb tip ↔ index tip
 
@@ -183,9 +190,7 @@ function continueStroke(pt) {
   }
   const from = state.prevPt;
   const to = pt;
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  if (Math.hypot(dx, dy) < 1) return;
+  if (Math.hypot(to.x - from.x, to.y - from.y) < 1) return;
 
   const midX = (from.x + to.x) / 2;
   const midY = (from.y + to.y) / 2;
@@ -219,14 +224,13 @@ function endStroke() {
   }
 }
 
-// ─── Cursor drawing (on cursorCanvas, cleared each frame) ────────────────────
+// ─── Cursor drawing ──────────────────────────────────────────────────────────
 let cursorPhase = 0;
 
 function drawCursor(hand) {
   if (!ctxCursor || !hand || !hand[8]) return;
 
   const index = hand[8];
-  // Raw coordinates — CSS scaleX(-1) on all layers handles mirroring
   const x = index.x * window.innerWidth;
   const y = index.y * window.innerHeight;
 
@@ -238,7 +242,6 @@ function drawCursor(hand) {
   ctxCursor.clearRect(0, 0, window.innerWidth, window.innerHeight);
 
   if (state.isPenDown) {
-    // Drawing: solid colored ring + center dot
     ctxCursor.beginPath();
     ctxCursor.arc(x, y, r * 0.7 + 2, 0, Math.PI * 2);
     ctxCursor.strokeStyle = cfg.color;
@@ -255,7 +258,6 @@ function drawCursor(hand) {
     ctxCursor.globalAlpha = 1;
     ctxCursor.fill();
   } else {
-    // Not drawing: spinning dashed ring
     ctxCursor.beginPath();
     ctxCursor.arc(x, y, r, 0, Math.PI * 2);
     ctxCursor.setLineDash([5, 6]);
@@ -280,26 +282,41 @@ function drawCursor(hand) {
   ctxCursor.restore();
 }
 
-// ─── Render loop (separate from MediaPipe — this is the key architectural fix) ──
+// ─── Render loop — runs detection + drawing in RAF ───────────────────────────
 function renderLoop() {
   animFrameId = requestAnimationFrame(renderLoop);
 
-  if (!ctxOut || !ctxDraw || !canvasOut || !canvasDraw) return;
+  if (!ctxOut || !ctxDraw || !canvasOut || !canvasDraw || !videoEl) return;
 
   const w = canvasOut.width;
   const h = canvasOut.height;
 
-  // Clear overlays
+  // --- Hand detection (runs inside RAF, not a separate callback) ---
+  if (handLandmarker && videoEl.readyState >= 2) {
+    const now = videoEl.currentTime;
+    if (now !== lastVideoTime) {
+      lastVideoTime = now;
+      try {
+        const results = handLandmarker.detectForVideo(videoEl, performance.now());
+        if (results.landmarks && results.landmarks.length > 0) {
+          state.hands = results.landmarks.map(lm => smoothLandmarks(lm));
+        } else {
+          state.hands = [];
+          landmarkBuffer.length = 0;
+        }
+      } catch (err) {
+        // Swallow frame errors to keep pipeline alive
+      }
+    }
+  }
+
+  // --- Draw camera feed ---
   ctxOut.clearRect(0, 0, w, h);
-
-  // Draw camera feed — no manual flip needed (CSS scaleX(-1) handles mirroring)
   ctxOut.drawImage(videoEl, 0, 0, w, h);
-
-  // Slight darken so strokes pop
   ctxOut.fillStyle = 'rgba(0,0,0,0.12)';
   ctxOut.fillRect(0, 0, w, h);
 
-  // FPS counter (direct DOM, zero React)
+  // --- FPS counter (direct DOM, zero React) ---
   state.frameCount++;
   const now = performance.now();
   if (now - state.lastFpsTime >= 1000) {
@@ -309,7 +326,7 @@ function renderLoop() {
     state.lastFpsTime = now;
   }
 
-  // Clear cursor canvas
+  // --- Clear cursor canvas ---
   if (ctxCursor) {
     ctxCursor.clearRect(0, 0, window.innerWidth, window.innerHeight);
   }
@@ -317,7 +334,7 @@ function renderLoop() {
   const hand = state.hands[0];
 
   if (hand) {
-    // Update status bar (direct DOM, zero React)
+    // Update status bar (direct DOM)
     const dot = document.getElementById('status-dot');
     const txt = document.getElementById('status-text');
     if (dot && !dot.classList.contains('connected')) dot.classList.add('connected');
@@ -328,7 +345,6 @@ function renderLoop() {
 
     if (gesture === 'pinch-draw') {
       const lm = hand[8]; // index fingertip
-      // Raw coordinates — CSS scaleX(-1) on draw-canvas handles mirroring
       const pt = { x: lm.x * w, y: lm.y * h };
 
       if (state.prevPt === null) {
@@ -359,7 +375,6 @@ function renderLoop() {
 
     drawCursor(hand);
   } else {
-    // No hand
     endStroke();
     state.prevPt = null;
 
@@ -374,53 +389,11 @@ function renderLoop() {
       badge.className = 'mode-badge';
     }
   }
-
-  // Pen indicator
-  const penEl = document.getElementById('pen-status');
-  if (penEl) penEl.textContent = state.isPenDown ? 'DOWN ●' : 'UP';
 }
 
-// ─── Public API ──────────────────────────────────────────────────────────────
-
-/**
- * Initialize the hand tracker.
- * @param {object} dom — { video, canvasOut, canvasDraw, canvasCursor }
- * @returns {{ undo, clear, download, getUndoCount, destroy }}
- */
-export function init(dom) {
-  videoEl = dom.video;
-  canvasOut = dom.canvasOut;
-  canvasDraw = dom.canvasDraw;
-
-  ctxOut = canvasOut.getContext('2d');
-  ctxDraw = canvasDraw.getContext('2d');
-  ctxCursor = dom.canvasCursor ? dom.canvasCursor.getContext('2d') : null;
-
-  // Size canvases
-  handleResize();
-  window.addEventListener('resize', handleResize);
-
-  // Check secure context
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    const msg = window.isSecureContext
-      ? 'Camera API not available on this device.'
-      : 'Camera requires HTTPS. Open this page over https:// or on localhost.';
-    updateError(msg);
-    return { undo, clear: () => { clearCanvas(); return 0; }, download, getUndoCount, setConfig, destroy };
-  }
-
-  // Start MediaPipe + Camera
-  startMediaPipe();
-
-  // Start render loop
-  if (!animFrameId) {
-    animFrameId = requestAnimationFrame(renderLoop);
-  }
-
-  return { undo, clear: clearCanvas, download, getUndoCount, destroy };
-}
-
+// ─── Error display ───────────────────────────────────────────────────────────
 function updateError(msg) {
+  console.error('[HandTracker]', msg);
   const el = document.getElementById('tracking-error');
   if (el) {
     el.textContent = msg;
@@ -428,60 +401,102 @@ function updateError(msg) {
   }
 }
 
-function startMediaPipe() {
-  console.log('[HandTracker] Starting MediaPipe...');
-  console.log('[HandTracker] Hands available:', typeof Hands !== 'undefined');
-  console.log('[HandTracker] Camera available:', typeof Camera !== 'undefined');
+function updateStatus(msg) {
+  const txt = document.getElementById('status-text');
+  if (txt) txt.textContent = msg;
+}
 
-  // eslint-disable-next-line no-undef
-  if (typeof Hands === 'undefined') {
-    console.error('[HandTracker] MediaPipe Hands not loaded');
-    updateError('MediaPipe failed to load. Check your internet connection.');
-    return;
-  }
-
+// ─── Start camera stream directly (no Camera utility needed) ─────────────────
+async function startCamera() {
   const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
-  // eslint-disable-next-line no-undef
-  handsInstance = new Hands({
-    locateFile: (file) =>
-      `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
-  });
+  const constraints = {
+    video: {
+      facingMode: 'user',
+      width: { ideal: isMobile ? 640 : 1280 },
+      height: { ideal: isMobile ? 480 : 720 },
+    },
+    audio: false,
+  };
 
-  handsInstance.setOptions({
-    maxNumHands: 1,
-    modelComplexity: isMobile ? 0 : 1, // 0=lite for mobile speed, 1=full for desktop accuracy
-    minDetectionConfidence: 0.5,
+  stream = await navigator.mediaDevices.getUserMedia(constraints);
+  videoEl.srcObject = stream;
+  await videoEl.play();
+
+  console.log('[HandTracker] Camera started:', videoEl.videoWidth, 'x', videoEl.videoHeight);
+}
+
+// ─── Initialize MediaPipe HandLandmarker ─────────────────────────────────────
+async function initMediaPipe() {
+  console.log('[HandTracker] Loading MediaPipe Tasks Vision...');
+
+  updateStatus('Loading AI model...');
+
+  const vision = await FilesetResolver.forVisionTasks(
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
+  );
+  console.log('[HandTracker] WASM loaded');
+
+  handLandmarker = await HandLandmarker.createFromOptions(vision, {
+    baseOptions: {
+      modelAssetPath: '/models/hand_landmarker.task',
+      delegate: 'GPU',
+    },
+    runningMode: 'VIDEO',
+    numHands: 1,
+    minHandDetectionConfidence: 0.5,
+    minHandPresenceConfidence: 0.5,
     minTrackingConfidence: 0.5,
   });
+  console.log('[HandTracker] HandLandmarker ready');
+}
 
-  handsInstance.onResults((results) => {
-    // Store landmarks — the render loop reads them
-    state.hands = results.multiHandLandmarks || [];
-  });
+// ─── Public API ──────────────────────────────────────────────────────────────
 
-  // eslint-disable-next-line no-undef
-  cameraInstance = new Camera(videoEl, {
-    onFrame: async () => {
-      if (handsInstance && videoEl) {
-        try {
-          await handsInstance.send({ image: videoEl });
-        } catch (_) {
-          // Swallow isolated frame errors to keep pipeline alive
-        }
+export function init(dom) {
+  videoEl = dom.video;
+  canvasOut = dom.canvasOut;
+  canvasDraw = dom.canvasDraw;
+
+  ctxOut = canvasOut.getContext('2d');
+  ctxDraw = canvasDraw.getContext('2d', { willReadFrequently: true });
+  ctxCursor = dom.canvasCursor ? dom.canvasCursor.getContext('2d') : null;
+
+  handleResize();
+  window.addEventListener('resize', handleResize);
+
+  // Start render loop immediately (will wait for handLandmarker to be ready)
+  if (!animFrameId) {
+    animFrameId = requestAnimationFrame(renderLoop);
+  }
+
+  // Async init: camera → MediaPipe → start detecting
+  async function boot() {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        updateError('Camera requires HTTPS. Open this page over https:// or on localhost.');
+        return;
       }
-    },
-    width: isMobile ? 640 : 1280,
-    height: isMobile ? 480 : 720,
-    facingMode: 'user', // Front-facing camera
-  });
 
-  cameraInstance.start().then(() => {
-    console.log('[HandTracker] Camera started successfully');
-  }).catch((err) => {
-    console.error('[HandTracker] Camera start failed:', err);
-    updateError('Camera access denied. Please allow camera access and reload.');
-  });
+      await startCamera();
+      await initMediaPipe();
+
+      updateStatus('Show your hand to start drawing');
+    } catch (err) {
+      console.error('[HandTracker] Init failed:', err);
+      if (err.name === 'NotAllowedError') {
+        updateError('Camera access denied. Please allow camera access and reload.');
+      } else if (err.name === 'NotFoundError') {
+        updateError('No camera found. Please connect a camera and reload.');
+      } else {
+        updateError('Failed to start: ' + (err.message || err));
+      }
+    }
+  }
+
+  boot();
+
+  return { undo, clear: clearCanvas, download, getUndoCount: () => state.undoHistory.length, destroy };
 }
 
 function setConfig(newCfg) {
@@ -495,13 +510,13 @@ function destroy() {
     cancelAnimationFrame(animFrameId);
     animFrameId = null;
   }
-  if (cameraInstance) {
-    cameraInstance.stop();
-    cameraInstance = null;
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
   }
-  if (handsInstance) {
-    handsInstance.close();
-    handsInstance = null;
+  if (handLandmarker) {
+    handLandmarker.close();
+    handLandmarker = null;
   }
   window.removeEventListener('resize', handleResize);
 }
