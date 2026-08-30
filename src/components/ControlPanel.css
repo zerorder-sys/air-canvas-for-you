@@ -9,10 +9,11 @@
   gap: 10px;
   padding: 10px 16px;
   border-radius: 14px;
-  background: rgba(10, 10, 20, 0.8);
+  background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
   flex-wrap: wrap;
   justify-content: center;
   max-width: 96vw;
@@ -27,14 +28,14 @@
 .divider {
   width: 1px;
   height: 24px;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .color-btn {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
-  border: 2.5px solid transparent;
+  border: 2.5px solid rgba(255, 255, 255, 0.2);
   cursor: pointer;
   transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
   flex-shrink: 0;
@@ -43,18 +44,18 @@
 .color-btn:active { transform: scale(1.15); }
 
 .color-btn.active {
-  border-color: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 0 8px currentColor;
+  border-color: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 0 10px currentColor;
   transform: scale(1.1);
 }
 
 .ctrl-btn {
-  padding: 7px 12px;
+  padding: 8px 14px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.85);
-  font-size: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, transform 0.1s;
@@ -65,17 +66,26 @@
 
 .ctrl-btn:active {
   transform: scale(0.96);
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .ctrl-btn.active {
-  background: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.35);
 }
 
-.ctrl-btn.danger { color: #fca5a5; border-color: rgba(239, 68, 68, 0.3); }
+.ctrl-btn.danger {
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.1);
+}
 .ctrl-btn.danger:active { background: rgba(239, 68, 68, 0.3); }
-.ctrl-btn.save { color: #93c5fd; border-color: rgba(59, 130, 246, 0.3); }
+
+.ctrl-btn.save {
+  color: #93c5fd;
+  border-color: rgba(59, 130, 246, 0.4);
+  background: rgba(59, 130, 246, 0.1);
+}
 .ctrl-btn.save:active { background: rgba(59, 130, 246, 0.25); }
 
 .slider-wrap {
@@ -85,7 +95,7 @@
 }
 
 .slider-wrap label {
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.6);
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -98,33 +108,33 @@
   width: 80px;
   height: 4px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.2);
   outline: none;
   cursor: pointer;
 }
 
 .slider-wrap input[type='range']::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
   cursor: pointer;
 }
 
 .slider-wrap input[type='range']::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   background: #fff;
   border: none;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
   cursor: pointer;
 }
 
 .size-val {
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.7);
   font-size: 11px;
   font-weight: 600;
   min-width: 28px;
@@ -140,12 +150,25 @@
     width: auto;
     max-width: none;
     gap: 6px;
-    padding: 8px 10px;
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.85);
   }
 
-  .color-btn { width: 28px; height: 28px; }
-  .ctrl-btn { padding: 8px 10px; font-size: 12px; min-height: 36px; }
+  .color-btn {
+    width: 32px;
+    height: 32px;
+    border-width: 3px;
+  }
+
+  .ctrl-btn {
+    padding: 10px 14px;
+    font-size: 13px;
+    min-height: 40px;
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+  }
+
   .slider-wrap input[type='range'] { width: 60px; }
   .divider { display: none; }
-  .ctrl-group.actions { width: 100%; justify-content: center; gap: 6px; }
+  .ctrl-group.actions { width: 100%; justify-content: center; gap: 8px; }
 }

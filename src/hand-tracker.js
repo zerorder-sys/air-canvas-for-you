@@ -8,8 +8,8 @@ const MAX_UNDO = 30;
 export function createHandTracker(videoEl, drawCanvas, cursorCanvas, callbacks) {
   const { onReady, onError, onStatus, onMode, onFps } = callbacks;
 
-  let drawCtx = drawCanvas.getContext('2d', { willReadFrequently: true });
-  let cursorCtx = cursorCanvas.getContext('2d');
+  const drawCtx = drawCanvas.getContext('2d', { willReadFrequently: true });
+  const cursorCtx = cursorCanvas.getContext('2d');
   let handLandmarker = null;
   let stream = null;
   let rafId = null;
@@ -25,6 +25,10 @@ export function createHandTracker(videoEl, drawCanvas, cursorCanvas, callbacks) 
 
   const landmarkBuffer = [];
   let cursorPhase = 0;
+
+  let lastStatus = '';
+  let lastMode = '';
+  let lastFpsSent = 0;
 
   function smoothLandmarks(raw) {
     landmarkBuffer.push(raw.map(l => ({ x: l.x, y: l.y, z: l.z })));
@@ -103,47 +107,66 @@ export function createHandTracker(videoEl, drawCanvas, cursorCanvas, callbacks) 
   }
 
   function drawCursor(x, y, gesture) {
-    cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
+    const w = cursorCanvas.width;
+    const h = cursorCanvas.height;
+    cursorCtx.clearRect(0, 0, w, h);
     cursorCtx.save();
 
-    const brushR = Math.max(4, cfg.brushSize * 0.7);
+    const brushR = Math.max(6, cfg.brushSize * 0.8);
 
     if (gesture === 'draw') {
+      // Outer glow
+      cursorCtx.beginPath();
+      cursorCtx.arc(x, y, brushR + 8, 0, Math.PI * 2);
+      cursorCtx.fillStyle = cfg.color;
+      cursorCtx.globalAlpha = 0.15;
+      cursorCtx.fill();
+      // Main circle
       cursorCtx.beginPath();
       cursorCtx.arc(x, y, brushR, 0, Math.PI * 2);
       cursorCtx.fillStyle = cfg.color;
       cursorCtx.globalAlpha = 0.9;
       cursorCtx.fill();
+      // White center dot
       cursorCtx.beginPath();
       cursorCtx.arc(x, y, 3, 0, Math.PI * 2);
       cursorCtx.fillStyle = '#fff';
       cursorCtx.globalAlpha = 1;
       cursorCtx.fill();
     } else if (gesture === 'hover') {
-      cursorPhase = (cursorPhase + 0.08) % (Math.PI * 2);
+      cursorPhase = (cursorPhase + 0.1) % (Math.PI * 2);
       const pulse = Math.sin(cursorPhase);
-      const r = brushR + 12 + pulse * 3;
+      const r = brushR + 14 + pulse * 3;
+      // Glow
+      cursorCtx.beginPath();
+      cursorCtx.arc(x, y, r + 6, 0, Math.PI * 2);
+      cursorCtx.strokeStyle = 'rgba(255,255,255,0.15)';
+      cursorCtx.lineWidth = 1;
+      cursorCtx.stroke();
+      // Dashed ring
       cursorCtx.beginPath();
       cursorCtx.arc(x, y, r, 0, Math.PI * 2);
-      cursorCtx.strokeStyle = 'rgba(255,255,255,0.7)';
-      cursorCtx.lineWidth = 2;
-      cursorCtx.setLineDash([5, 5]);
-      cursorCtx.lineDashOffset = -cursorPhase * 8;
+      cursorCtx.strokeStyle = 'rgba(255,255,255,0.8)';
+      cursorCtx.lineWidth = 2.5;
+      cursorCtx.setLineDash([6, 6]);
+      cursorCtx.lineDashOffset = -cursorPhase * 10;
       cursorCtx.stroke();
       cursorCtx.setLineDash([]);
+      // Center dot
       cursorCtx.beginPath();
-      cursorCtx.arc(x, y, 3, 0, Math.PI * 2);
+      cursorCtx.arc(x, y, 4, 0, Math.PI * 2);
       cursorCtx.fillStyle = cfg.color;
       cursorCtx.fill();
     } else {
+      // Idle: simple crosshair
       cursorCtx.beginPath();
-      cursorCtx.arc(x, y, 8, 0, Math.PI * 2);
-      cursorCtx.strokeStyle = 'rgba(255,255,255,0.3)';
+      cursorCtx.arc(x, y, 10, 0, Math.PI * 2);
+      cursorCtx.strokeStyle = 'rgba(255,255,255,0.35)';
       cursorCtx.lineWidth = 1.5;
       cursorCtx.stroke();
       cursorCtx.beginPath();
       cursorCtx.arc(x, y, 2, 0, Math.PI * 2);
-      cursorCtx.fillStyle = 'rgba(255,255,255,0.5)';
+      cursorCtx.fillStyle = 'rgba(255,255,255,0.6)';
       cursorCtx.fill();
     }
 
@@ -170,17 +193,29 @@ export function createHandTracker(videoEl, drawCanvas, cursorCanvas, callbacks) 
         if (hands.length === 0) {
           landmarkBuffer.length = 0;
           endStroke();
-          if (onStatus) onStatus('No hand detected');
-          if (onMode) onMode('idle');
+          if (lastStatus !== 'no-hand') {
+            lastStatus = 'no-hand';
+            if (onStatus) onStatus('No hand detected');
+          }
+          if (lastMode !== 'idle') {
+            lastMode = 'idle';
+            if (onMode) onMode('idle');
+          }
           drawCursor(w / 2, h / 2, 'idle');
           return;
         }
 
         const hand = hands[0];
-        if (onStatus) onStatus('Hand tracked');
+        if (lastStatus !== 'tracked') {
+          lastStatus = 'tracked';
+          if (onStatus) onStatus('Hand tracked');
+        }
 
         const gesture = classifyGesture(hand);
-        if (onMode) onMode(gesture);
+        if (gesture !== lastMode) {
+          lastMode = gesture;
+          if (onMode) onMode(gesture);
+        }
 
         const tipX = hand[8].x * w;
         const tipY = hand[8].y * h;
@@ -203,7 +238,10 @@ export function createHandTracker(videoEl, drawCanvas, cursorCanvas, callbacks) 
     frameCount++;
     const t = performance.now();
     if (t - lastFpsTime >= 1000) {
-      if (onFps) onFps(frameCount);
+      if (frameCount !== lastFpsSent) {
+        lastFpsSent = frameCount;
+        if (onFps) onFps(frameCount);
+      }
       frameCount = 0;
       lastFpsTime = t;
     }

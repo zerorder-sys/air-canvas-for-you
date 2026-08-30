@@ -14,7 +14,7 @@
   transform: scaleX(-1);
   z-index: 0;
   pointer-events: none;
-  filter: brightness(0.85) contrast(1.05) saturate(1.1);
+  filter: brightness(0.75) contrast(1.05) saturate(1.1);
 }
 
 .draw-layer,
