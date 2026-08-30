@@ -10,10 +10,20 @@ const COLORS = [
   { value: '#bf5af2', label: 'Purple' },
 ];
 
+const STAMPS = [
+  { value: 'circle', icon: '●', label: 'Circle' },
+  { value: 'square', icon: '■', label: 'Square' },
+  { value: 'triangle', icon: '▲', label: 'Triangle' },
+  { value: 'star', icon: '★', label: 'Star' },
+  { value: 'heart', icon: '♥', label: 'Heart' },
+  { value: 'diamond', icon: '◆', label: 'Diamond' },
+];
+
 export default function ControlPanel({
   color, onColorChange,
   brushSize, onBrushSizeChange,
   isErasing, onToggleEraser,
+  stamp, onStampChange,
   onUndo, onClear, onDownload,
 }) {
   const handleSize = useCallback(
@@ -53,10 +63,43 @@ export default function ControlPanel({
         </div>
       </div>
 
+      {stamp && (
+        <div className="ctrl-row stamp-row">
+          <div className="ctrl-group stamp-picker">
+            {STAMPS.map((s) => (
+              <button
+                key={s.value}
+                className={`stamp-btn${stamp === s.value ? ' active' : ''}`}
+                title={s.label}
+                onClick={() => onStampChange(stamp === s.value ? null : s.value)}
+              >
+                {s.icon}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="ctrl-row">
         <button
+          className={`ctrl-btn${stamp ? ' active' : ''}`}
+          onClick={() => {
+            if (stamp) {
+              onStampChange(null);
+            } else {
+              onStampChange('circle');
+              if (isErasing) onToggleEraser();
+            }
+          }}
+        >
+          Stamp
+        </button>
+        <button
           className={`ctrl-btn${isErasing ? ' active' : ''}`}
-          onClick={onToggleEraser}
+          onClick={() => {
+            onToggleEraser();
+            if (stamp) onStampChange(null);
+          }}
         >
           Eraser
         </button>

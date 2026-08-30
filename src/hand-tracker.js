@@ -19,10 +19,11 @@ export function createHandTracker(videoEl, outputCanvas, drawCanvas, cursorCanva
   let frameCount = 0;
   let lastFpsTime = performance.now();
 
-  const cfg = { color: '#ff0055', brushSize: 6, isErasing: false };
+  const cfg = { color: '#ff0055', brushSize: 6, isErasing: false, stamp: null };
 
   let isPenDown = false;
   let prevPoint = null;
+  let stampAccum = 0;
   const undoStack = [];
 
   const landmarkBuffer = [];
@@ -102,6 +103,70 @@ export function createHandTracker(videoEl, outputCanvas, drawCanvas, cursorCanva
     ctxDraw.lineCap = 'round';
     ctxDraw.lineJoin = 'round';
     ctxDraw.stroke();
+  }
+
+  function drawStampShape(ctx, x, y, size) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = cfg.color;
+    ctx.translate(x, y);
+
+    switch (cfg.stamp) {
+      case 'circle':
+        ctx.beginPath();
+        ctx.arc(0, 0, size, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      case 'square':
+        ctx.fillRect(-size, -size, size * 2, size * 2);
+        break;
+      case 'triangle':
+        ctx.beginPath();
+        ctx.moveTo(0, -size);
+        ctx.lineTo(size, size);
+        ctx.lineTo(-size, size);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      case 'star': {
+        ctx.beginPath();
+        for (let i = 0; i < 5; i++) {
+          const a = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+          const r = size;
+          const method = i === 0 ? 'moveTo' : 'lineTo';
+          ctx[method](Math.cos(a) * r, Math.sin(a) * r);
+        }
+        ctx.closePath();
+        ctx.fill();
+        break;
+      }
+      case 'heart': {
+        const s = size * 0.6;
+        ctx.beginPath();
+        ctx.moveTo(0, s * 0.4);
+        ctx.bezierCurveTo(-s, -s * 0.4, -s * 0.4, -s * 1.2, 0, -s * 0.5);
+        ctx.bezierCurveTo(s * 0.4, -s * 1.2, s, -s * 0.4, 0, s * 0.4);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      }
+      case 'diamond':
+        ctx.beginPath();
+        ctx.moveTo(0, -size);
+        ctx.lineTo(size * 0.6, 0);
+        ctx.lineTo(0, size);
+        ctx.lineTo(-size * 0.6, 0);
+        ctx.closePath();
+        ctx.fill();
+        break;
+    }
+
+    ctx.restore();
+  }
+
+  function placeStamp(x, y) {
+    const size = Math.max(4, cfg.brushSize * 0.9);
+    drawStampShape(ctxDraw, x, y, size);
   }
 
   function endStroke() {
@@ -242,12 +307,31 @@ export function createHandTracker(videoEl, outputCanvas, drawCanvas, cursorCanva
 
         if (gesture === 'draw') {
           if (prevPoint) {
-            drawStroke(prevPoint, { x: tipX, y: tipY });
+            if (cfg.stamp && !cfg.isErasing) {
+              const dx = tipX - prevPoint.x;
+              const dy = tipY - prevPoint.y;
+              stampAccum += Math.hypot(dx, dy);
+              const spacing = Math.max(8, cfg.brushSize * 2.5);
+              while (stampAccum >= spacing) {
+                const t = stampAccum / spacing;
+                const sx = prevPoint.x + dx * (1 - t + 1 / (stampAccum / spacing));
+                const sy = prevPoint.y + dy * (1 - t + 1 / (stampAccum / spacing));
+                placeStamp(sx, sy);
+                stampAccum -= spacing;
+              }
+            } else {
+              drawStroke(prevPoint, { x: tipX, y: tipY });
+            }
           } else {
             prevPoint = { x: tipX, y: tipY };
+            stampAccum = 0;
+            if (cfg.stamp && !cfg.isErasing) {
+              placeStamp(tipX, tipY);
+            }
           }
         } else {
           endStroke();
+          stampAccum = 0;
         }
 
         prevPoint = gesture === 'draw' ? { x: tipX, y: tipY } : null;
@@ -392,6 +476,7 @@ export function createHandTracker(videoEl, outputCanvas, drawCanvas, cursorCanva
     if (newCfg.color !== undefined) cfg.color = newCfg.color;
     if (newCfg.brushSize !== undefined) cfg.brushSize = newCfg.brushSize;
     if (newCfg.isErasing !== undefined) cfg.isErasing = newCfg.isErasing;
+    if (newCfg.stamp !== undefined) cfg.stamp = newCfg.stamp;
   }
 
   return { init, destroy, undo, clear, download, setConfig, getUndoCount: () => undoStack.length };

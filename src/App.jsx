@@ -8,6 +8,7 @@ export default function App() {
   const [color, setColor] = useState('#ff0055');
   const [brushSize, setBrushSize] = useState(6);
   const [isErasing, setIsErasing] = useState(false);
+  const [stamp, setStamp] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
   const [status, setStatus] = useState('no-hand');
@@ -33,8 +34,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (trackerRef.current) trackerRef.current.setConfig({ color, brushSize, isErasing });
-  }, [color, brushSize, isErasing]);
+    if (trackerRef.current) trackerRef.current.setConfig({ color, brushSize, isErasing, stamp });
+  }, [color, brushSize, isErasing, stamp]);
 
   const handleUndo = useCallback(() => {
     if (trackerRef.current) trackerRef.current.undo();
@@ -129,6 +130,8 @@ export default function App() {
         onBrushSizeChange={setBrushSize}
         isErasing={isErasing}
         onToggleEraser={handleToggleEraser}
+        stamp={stamp}
+        onStampChange={setStamp}
         onUndo={handleUndo}
         onClear={handleClear}
         onDownload={handleDownload}

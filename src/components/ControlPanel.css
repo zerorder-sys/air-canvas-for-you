@@ -99,6 +99,38 @@
 }
 .ctrl-btn.save:active { background: rgba(59, 130, 246, 0.25); }
 
+.stamp-row {
+  padding: 0;
+}
+
+.stamp-picker {
+  gap: 4px;
+}
+
+.stamp-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.stamp-btn:active { transform: scale(0.92); }
+
+.stamp-btn.active {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
+  color: #fff;
+}
+
 .slider-wrap {
   display: flex;
   align-items: center;
