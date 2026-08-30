@@ -10,11 +10,12 @@ body {
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   height: 100vh;
   width: 100vw;
-  /* Prevent pull-to-refresh and overscroll on mobile */
   overscroll-behavior: none;
   -webkit-overflow-scrolling: none;
   position: fixed;
   inset: 0;
+  touch-action: none;
+  -ms-touch-action: none;
 }
 
 #root {
@@ -26,7 +27,7 @@ body {
   position: absolute;
   inset: 0;
   z-index: 200;
-  display: none;
+  display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -39,7 +40,7 @@ body {
 }
 
 .error-overlay::before {
-  content: '📷';
+  content: '\1F4F7';
   font-size: 48px;
 }
 
@@ -49,6 +50,9 @@ body {
   color: rgba(255, 255, 255, 0.4);
 }
 
-.pen-status {
-  display: none; /* hidden, used by hand-tracker for debugging if needed */
+.error-overlay p {
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.8);
+  max-width: 320px;
+  line-height: 1.5;
 }

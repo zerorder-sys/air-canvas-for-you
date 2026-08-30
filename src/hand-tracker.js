@@ -1,11 +1,3 @@
-/**
- * hand-tracker.js — Vanilla JS hand-tracking drawing engine
- *
- * Uses @mediapipe/tasks-vision (new API, better mobile support).
- * Architecture: detectForVideo in RAF render loop → gesture classification → canvas drawing.
- * Zero React state updates in the hot path.
- */
-
 import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 
 // ─── Shared mutable state ────────────────────────────────────────────────────
@@ -63,7 +55,7 @@ function pushSnapshot() {
   try {
     state.undoHistory.push(ctxDraw.getImageData(0, 0, canvasDraw.width, canvasDraw.height));
     if (state.undoHistory.length > MAX_UNDO) state.undoHistory.shift();
-  } catch (_) {}
+  } catch {}
 }
 
 function undo() {
@@ -123,7 +115,7 @@ function handleResize() {
     let saved = null;
     if (c.width > 0 && c.height > 0) {
       const ctx = c.getContext('2d', { willReadFrequently: true });
-      try { saved = ctx.getImageData(0, 0, c.width, c.height); } catch (_) {}
+      try { saved = ctx.getImageData(0, 0, c.width, c.height); } catch {}
     }
 
     c.width = w;
@@ -155,12 +147,9 @@ function fingerExtended(hand, tipIdx, mcpIdx) {
  *   Everything else → IDLE (pen up)
  */
 function classifyGesture(hand) {
-  const iE = fingerExtended(hand, 8, 5);  // index extended
-  const mE = fingerExtended(hand, 12, 9); // middle extended
-  const rE = fingerExtended(hand, 16, 13); // ring extended
-  const pE = fingerExtended(hand, 20, 17); // pinky extended
+  const iE = fingerExtended(hand, 8, 5);
+  const mE = fingerExtended(hand, 12, 9);
 
-  // Index UP + Middle DOWN → DRAW
   if (iE && !mE) {
     if (!state.isPenDown) {
       state.isPenDown = true;
@@ -387,7 +376,7 @@ function renderLoop() {
           state.hands = [];
           landmarkBuffer.length = 0;
         }
-      } catch (_) {
+      } catch {
         // Swallow frame errors
       }
     }
@@ -475,14 +464,12 @@ function renderLoop() {
   }
 }
 
-// ─── Error display ───────────────────────────────────────────────────────────
+// ─── Callbacks (set by init) ─────────────────────────────────────────────────
+let onReadyCb = null;
+let onErrorCb = null;
+
 function updateError(msg) {
-  console.error('[HandTracker]', msg);
-  const el = document.getElementById('tracking-error');
-  if (el) {
-    el.textContent = msg;
-    el.style.display = 'flex';
-  }
+  if (onErrorCb) onErrorCb(msg);
 }
 
 function updateStatus(msg) {
@@ -490,11 +477,10 @@ function updateStatus(msg) {
   if (txt) txt.textContent = msg;
 }
 
-// ─── Start camera with HIGH QUALITY stream ───────────────────────────────────
+// ─── Start camera ────────────────────────────────────────────────────────────
 async function startCamera() {
   const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
-  // Request the highest quality available — browser picks the closest match
   const constraints = {
     video: {
       facingMode: 'user',
@@ -508,20 +494,15 @@ async function startCamera() {
   stream = await navigator.mediaDevices.getUserMedia(constraints);
   videoEl.srcObject = stream;
   await videoEl.play();
-
-  // Log the ACTUAL resolution the camera gave us
-  console.log('[HandTracker] Camera started:', videoEl.videoWidth, 'x', videoEl.videoHeight);
 }
 
 // ─── Initialize MediaPipe HandLandmarker ─────────────────────────────────────
 async function initMediaPipe() {
-  console.log('[HandTracker] Loading MediaPipe Tasks Vision...');
   updateStatus('Loading AI model...');
 
   const vision = await FilesetResolver.forVisionTasks(
-    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm'
   );
-  console.log('[HandTracker] WASM loaded');
 
   // Try GPU first, fall back to CPU if GPU fails (some mobile GPUs crash)
   try {
@@ -536,9 +517,7 @@ async function initMediaPipe() {
       minHandPresenceConfidence: 0.5,
       minTrackingConfidence: 0.5,
     });
-    console.log('[HandTracker] HandLandmarker ready (GPU)');
-  } catch (gpuErr) {
-    console.warn('[HandTracker] GPU delegate failed, falling back to CPU:', gpuErr.message);
+  } catch {
     handLandmarker = await HandLandmarker.createFromOptions(vision, {
       baseOptions: {
         modelAssetPath: '/models/hand_landmarker.task',
@@ -550,16 +529,18 @@ async function initMediaPipe() {
       minHandPresenceConfidence: 0.5,
       minTrackingConfidence: 0.5,
     });
-    console.log('[HandTracker] HandLandmarker ready (CPU fallback)');
   }
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
-export function init(dom) {
+export function init(dom, callbacks = {}) {
   videoEl = dom.video;
   canvasOut = dom.canvasOut;
   canvasDraw = dom.canvasDraw;
+
+  onReadyCb = callbacks.onReady || null;
+  onErrorCb = callbacks.onError || null;
 
   ctxOut = canvasOut.getContext('2d');
   ctxDraw = canvasDraw.getContext('2d', { willReadFrequently: true });
@@ -585,8 +566,8 @@ export function init(dom) {
       await initMediaPipe();
 
       updateStatus('Show your hand to start drawing');
+      if (onReadyCb) onReadyCb();
     } catch (err) {
-      console.error('[HandTracker] Init failed:', err);
       if (err.name === 'NotAllowedError') {
         updateError('Camera access denied. Please allow camera access and reload.');
       } else if (err.name === 'NotFoundError') {

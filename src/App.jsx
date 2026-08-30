@@ -8,23 +8,24 @@ function App() {
   const [brushSize, setBrushSize] = useState(6);
   const [isErasing, setIsErasing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState(null);
 
-  // Imperative API from hand-tracker (undo, clear, download)
   const apiRef = useRef(null);
 
-  const handleReady = useCallback((api) => {
-    apiRef.current = api;
-    // Hide loading after model starts
-    setTimeout(() => setLoading(false), 2000);
+  const handleReady = useCallback(() => {
+    setLoading(false);
   }, []);
 
-  // Safety net: always dismiss loading after 6s even if init fails
+  const handleError = useCallback((msg) => {
+    setLoading(false);
+    setErrorMsg(msg);
+  }, []);
+
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 6000);
+    const timer = setTimeout(() => setLoading(false), 8000);
     return () => clearTimeout(timer);
   }, []);
 
-  // Forward color/brushSize/eraser changes to hand-tracker config
   useEffect(() => {
     const api = apiRef.current;
     if (api && api.setConfig) {
@@ -48,7 +49,6 @@ function App() {
     setIsErasing((prev) => !prev);
   }, []);
 
-  // Keyboard shortcuts
   useEffect(() => {
     const handler = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
@@ -62,25 +62,27 @@ function App() {
 
   return (
     <div style={{ position: 'relative', width: '100vw', height: '100vh' }}>
-      {/* Loading overlay */}
       {loading && <Loading />}
 
-      {/* Camera error overlay */}
-      <div id="tracking-error" className="error-overlay" />
+      {errorMsg && (
+        <div className="error-overlay" style={{ display: 'flex' }}>
+          <p>{errorMsg}</p>
+        </div>
+      )}
 
-      {/* Canvas + video layers (all drawing logic in hand-tracker.js) */}
-      <Canvas onReady={handleReady} />
+      <Canvas
+        onReady={handleReady}
+        onError={handleError}
+        onApiReady={(api) => { apiRef.current = api; }}
+      />
 
-      {/* Status bar — updated by hand-tracker via direct DOM */}
       <div className="status-bar">
         <div id="status-dot" className="status-dot" />
         <span id="status-text" className="status-text">No hand detected</span>
         <span id="mode-badge" className="mode-badge" />
       </div>
       <div id="fps-counter" className="fps-counter">0 FPS</div>
-      <div id="pen-status" className="pen-status" />
 
-      {/* Control panel — React manages UI state only */}
       <ControlPanel
         color={color}
         onColorChange={setColor}

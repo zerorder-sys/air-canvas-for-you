@@ -14,7 +14,8 @@
 const CACHE_NAME = 'air-canvas-v1';
 
 // App shell files (served by Vite from /dist)
-const APP_SHELL = [  '/',
+const APP_SHELL = [
+  '/',
   '/index.html',
   '/icon.svg',
   '/icon-192.png',
@@ -25,49 +26,36 @@ const APP_SHELL = [  '/',
 
 // MediaPipe WASM + model files (loaded at runtime by tasks-vision)
 const MEDIAPIPE_CDN = [
-  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm/vision_wasm_internal.wasm',
+  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm/vision_wasm_internal.wasm',
   '/models/hand_landmarker.task',
 ];
 
 // Install: cache app shell and MediaPipe CDN
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing...');
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('[SW] Caching app shell and MediaPipe CDN');
-      // Cache app shell first (critical)
       return cache.addAll(APP_SHELL).then(() => {
-        // Cache MediaPipe CDN (may fail if offline — that's OK, we retry on activate)
         return Promise.allSettled(
           MEDIAPIPE_CDN.map((url) =>
-            cache.add(url).catch((err) => {
-              console.warn(`[SW] Failed to cache ${url}:`, err.message);
-            })
+            cache.add(url).catch(() => {})
           )
         );
       });
     })
   );
-  // Skip waiting to activate immediately
   self.skipWaiting();
 });
 
-// Activate: clean up old caches
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating...');
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
         keys
           .filter((key) => key !== CACHE_NAME)
-          .map((key) => {
-            console.log(`[SW] Removing old cache: ${key}`);
-            return caches.delete(key);
-          })
+          .map((key) => caches.delete(key))
       );
     })
   );
-  // Claim all clients immediately
   self.clients.claim();
 });
 

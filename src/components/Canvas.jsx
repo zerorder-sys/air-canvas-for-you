@@ -2,12 +2,7 @@ import { useRef, useEffect } from 'react';
 import { init } from '../hand-tracker';
 import './Canvas.css';
 
-/**
- * Canvas component — mounts DOM elements and hands off all drawing
- * logic to the vanilla JS hand-tracker module. Zero React state
- * in the hot path; React only mounts the DOM tree.
- */
-export default function Canvas({ onReady }) {
+export default function Canvas({ onReady, onError, onApiReady }) {
   const videoRef = useRef(null);
   const canvasOutRef = useRef(null);
   const canvasDrawRef = useRef(null);
@@ -16,14 +11,24 @@ export default function Canvas({ onReady }) {
   useEffect(() => {
     if (!videoRef.current || !canvasOutRef.current || !canvasDrawRef.current) return;
 
-    const api = init({
-      video: videoRef.current,
-      canvasOut: canvasOutRef.current,
-      canvasDraw: canvasDrawRef.current,
-      canvasCursor: canvasCursorRef.current,
-    });
+    const api = init(
+      {
+        video: videoRef.current,
+        canvasOut: canvasOutRef.current,
+        canvasDraw: canvasDrawRef.current,
+        canvasCursor: canvasCursorRef.current,
+      },
+      {
+        onReady: () => {
+          if (onReady) onReady();
+        },
+        onError: (msg) => {
+          if (onError) onError(msg);
+        },
+      }
+    );
 
-    if (onReady) onReady(api);
+    if (onApiReady) onApiReady(api);
 
     return () => {
       if (api && api.destroy) api.destroy();
