@@ -10,7 +10,7 @@ export default function App() {
   const [isErasing, setIsErasing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
-  const [status, setStatus] = useState('No hand detected');
+  const [status, setStatus] = useState('no-hand');
   const [mode, setMode] = useState('idle');
   const [fps, setFps] = useState(0);
 
@@ -61,7 +61,28 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [handleUndo]);
 
-  const modeLabel = mode === 'draw' ? 'DRAW' : mode === 'hover' ? 'HOVER' : '';
+  const isDrawing = mode === 'draw';
+  const isHovering = mode === 'hover';
+  const handDetected = status === 'tracked' || isDrawing || isHovering;
+
+  let statusText = 'Show your hand to start';
+  let statusIcon = 'hand';
+  if (loading) {
+    statusText = 'Loading...';
+    statusIcon = 'loading';
+  } else if (errorMsg) {
+    statusText = errorMsg;
+    statusIcon = 'error';
+  } else if (isDrawing) {
+    statusText = 'Drawing...';
+    statusIcon = 'draw';
+  } else if (isHovering) {
+    statusText = 'Hovering - point index finger to draw';
+    statusIcon = 'hover';
+  } else if (handDetected) {
+    statusText = 'Hand detected - raise index finger to draw';
+    statusIcon = 'detected';
+  }
 
   return (
     <div className="app">
@@ -83,13 +104,18 @@ export default function App() {
         trackerRef={trackerRef}
       />
 
+      {/* Prominent centered status indicator */}
+      <div className={`status-indicator ${statusIcon}`}>
+        <div className="status-dot-lg" />
+        <span className="status-label">{statusText}</span>
+      </div>
+
+      {/* Top-left HUD */}
       <div className="hud">
         <div className="hud-left">
-          <div className={`dot ${mode === 'draw' ? 'draw' : mode === 'hover' ? 'hover' : ''}`} />
-          <span className="hud-status">{status}</span>
-          {modeLabel && <span className={`badge ${mode}`}>{modeLabel}</span>}
+          <div className={`dot ${isDrawing ? 'draw' : isHovering ? 'hover' : handDetected ? 'detected' : ''}`} />
+          <span className="hud-fps">{fps} FPS</span>
         </div>
-        <span className="hud-fps">{fps} FPS</span>
       </div>
 
       <ControlPanel

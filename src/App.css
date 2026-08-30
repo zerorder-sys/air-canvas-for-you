@@ -49,6 +49,88 @@
   line-height: 1.5;
 }
 
+/* ── Centered status indicator ── */
+.status-indicator {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 24px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+
+.status-indicator.hand,
+.status-indicator.detected,
+.status-indicator.hover,
+.status-indicator.draw {
+  opacity: 0;
+}
+
+.status-dot-lg {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transition: background 0.3s, box-shadow 0.3s;
+}
+
+.status-indicator.loading .status-dot-lg {
+  background: #3b82f6;
+  box-shadow: 0 0 12px #3b82f6;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.status-indicator.hand .status-dot-lg,
+.status-indicator.detected .status-dot-lg {
+  background: #eab308;
+  box-shadow: 0 0 12px #eab308;
+}
+
+.status-indicator.hover .status-dot-lg {
+  background: #eab308;
+  box-shadow: 0 0 12px #eab308;
+}
+
+.status-indicator.draw .status-dot-lg {
+  background: #22c55e;
+  box-shadow: 0 0 16px #22c55e;
+  animation: pulse-draw 1s ease-in-out infinite;
+}
+
+.status-indicator.error .status-dot-lg {
+  background: #ef4444;
+  box-shadow: 0 0 12px #ef4444;
+}
+
+.status-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  text-align: center;
+  white-space: nowrap;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.85); }
+}
+
+@keyframes pulse-draw {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.2); }
+}
+
+/* ── Top-left HUD ── */
 .hud {
   position: absolute;
   top: 12px;
@@ -56,7 +138,7 @@
   z-index: 50;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   padding: 6px 12px;
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.6);
@@ -75,40 +157,32 @@
   height: 8px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.3);
-  transition: background 0.3s;
+  transition: background 0.3s, box-shadow 0.3s;
 }
 
-.dot.draw { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
-.dot.hover { background: #eab308; box-shadow: 0 0 6px #eab308; }
-
-.hud-status {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.7);
-  font-weight: 500;
-}
-
-.badge {
-  font-size: 11px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.badge.draw {
-  background: rgba(34, 197, 94, 0.25);
-  color: #4ade80;
-}
-
-.badge.hover {
-  background: rgba(234, 179, 8, 0.25);
-  color: #facc15;
-}
+.dot.draw { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+.dot.hover { background: #eab308; box-shadow: 0 0 8px #eab308; }
+.dot.detected { background: #eab308; box-shadow: 0 0 6px #eab308; }
 
 .hud-fps {
   font-size: 11px;
   color: rgba(255, 255, 255, 0.4);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .hud {
+    top: env(safe-area-inset-top, 8px);
+    left: 8px;
+    background: rgba(0, 0, 0, 0.7);
+  }
+
+  .status-indicator {
+    padding: 12px 18px;
+  }
+
+  .status-label {
+    font-size: 13px;
+  }
 }

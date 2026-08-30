@@ -5,11 +5,12 @@ const WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/was
 const SMOOTH_FRAMES = 3;
 const MAX_UNDO = 30;
 
-export function createHandTracker(videoEl, drawCanvas, cursorCanvas, callbacks) {
+export function createHandTracker(videoEl, outputCanvas, drawCanvas, cursorCanvas, callbacks) {
   const { onReady, onError, onStatus, onMode, onFps } = callbacks;
 
-  const drawCtx = drawCanvas.getContext('2d', { willReadFrequently: true });
-  const cursorCtx = cursorCanvas.getContext('2d');
+  const ctxOut = outputCanvas.getContext('2d');
+  const ctxDraw = drawCanvas.getContext('2d', { willReadFrequently: true });
+  const ctxCursor = cursorCanvas.getContext('2d');
   let handLandmarker = null;
   let stream = null;
   let rafId = null;
@@ -44,7 +45,7 @@ export function createHandTracker(videoEl, drawCanvas, cursorCanvas, callbacks) 
 
   function pushUndo() {
     try {
-      undoStack.push(drawCtx.getImageData(0, 0, drawCanvas.width, drawCanvas.height));
+      undoStack.push(ctxDraw.getImageData(0, 0, drawCanvas.width, drawCanvas.height));
       if (undoStack.length > MAX_UNDO) undoStack.shift();
     } catch {}
   }
@@ -81,21 +82,21 @@ export function createHandTracker(videoEl, drawCanvas, cursorCanvas, callbacks) 
   }
 
   function drawStroke(from, to) {
-    drawCtx.beginPath();
-    drawCtx.moveTo(from.x, from.y);
-    drawCtx.lineTo(to.x, to.y);
+    ctxDraw.beginPath();
+    ctxDraw.moveTo(from.x, from.y);
+    ctxDraw.lineTo(to.x, to.y);
     if (cfg.isErasing) {
-      drawCtx.globalCompositeOperation = 'destination-out';
-      drawCtx.strokeStyle = 'rgba(0,0,0,1)';
-      drawCtx.lineWidth = cfg.brushSize * 4;
+      ctxDraw.globalCompositeOperation = 'destination-out';
+      ctxDraw.strokeStyle = 'rgba(0,0,0,1)';
+      ctxDraw.lineWidth = cfg.brushSize * 4;
     } else {
-      drawCtx.globalCompositeOperation = 'source-over';
-      drawCtx.strokeStyle = cfg.color;
-      drawCtx.lineWidth = cfg.brushSize;
+      ctxDraw.globalCompositeOperation = 'source-over';
+      ctxDraw.strokeStyle = cfg.color;
+      ctxDraw.lineWidth = cfg.brushSize;
     }
-    drawCtx.lineCap = 'round';
-    drawCtx.lineJoin = 'round';
-    drawCtx.stroke();
+    ctxDraw.lineCap = 'round';
+    ctxDraw.lineJoin = 'round';
+    ctxDraw.stroke();
   }
 
   function endStroke() {
@@ -109,77 +110,81 @@ export function createHandTracker(videoEl, drawCanvas, cursorCanvas, callbacks) 
   function drawCursor(x, y, gesture) {
     const w = cursorCanvas.width;
     const h = cursorCanvas.height;
-    cursorCtx.clearRect(0, 0, w, h);
-    cursorCtx.save();
+    ctxCursor.clearRect(0, 0, w, h);
+    ctxCursor.save();
 
     const brushR = Math.max(6, cfg.brushSize * 0.8);
 
     if (gesture === 'draw') {
-      // Outer glow
-      cursorCtx.beginPath();
-      cursorCtx.arc(x, y, brushR + 8, 0, Math.PI * 2);
-      cursorCtx.fillStyle = cfg.color;
-      cursorCtx.globalAlpha = 0.15;
-      cursorCtx.fill();
-      // Main circle
-      cursorCtx.beginPath();
-      cursorCtx.arc(x, y, brushR, 0, Math.PI * 2);
-      cursorCtx.fillStyle = cfg.color;
-      cursorCtx.globalAlpha = 0.9;
-      cursorCtx.fill();
-      // White center dot
-      cursorCtx.beginPath();
-      cursorCtx.arc(x, y, 3, 0, Math.PI * 2);
-      cursorCtx.fillStyle = '#fff';
-      cursorCtx.globalAlpha = 1;
-      cursorCtx.fill();
+      ctxCursor.beginPath();
+      ctxCursor.arc(x, y, brushR + 10, 0, Math.PI * 2);
+      ctxCursor.fillStyle = cfg.color;
+      ctxCursor.globalAlpha = 0.12;
+      ctxCursor.fill();
+      ctxCursor.beginPath();
+      ctxCursor.arc(x, y, brushR, 0, Math.PI * 2);
+      ctxCursor.fillStyle = cfg.color;
+      ctxCursor.globalAlpha = 0.9;
+      ctxCursor.fill();
+      ctxCursor.beginPath();
+      ctxCursor.arc(x, y, 3, 0, Math.PI * 2);
+      ctxCursor.fillStyle = '#fff';
+      ctxCursor.globalAlpha = 1;
+      ctxCursor.fill();
     } else if (gesture === 'hover') {
       cursorPhase = (cursorPhase + 0.1) % (Math.PI * 2);
       const pulse = Math.sin(cursorPhase);
       const r = brushR + 14 + pulse * 3;
-      // Glow
-      cursorCtx.beginPath();
-      cursorCtx.arc(x, y, r + 6, 0, Math.PI * 2);
-      cursorCtx.strokeStyle = 'rgba(255,255,255,0.15)';
-      cursorCtx.lineWidth = 1;
-      cursorCtx.stroke();
-      // Dashed ring
-      cursorCtx.beginPath();
-      cursorCtx.arc(x, y, r, 0, Math.PI * 2);
-      cursorCtx.strokeStyle = 'rgba(255,255,255,0.8)';
-      cursorCtx.lineWidth = 2.5;
-      cursorCtx.setLineDash([6, 6]);
-      cursorCtx.lineDashOffset = -cursorPhase * 10;
-      cursorCtx.stroke();
-      cursorCtx.setLineDash([]);
-      // Center dot
-      cursorCtx.beginPath();
-      cursorCtx.arc(x, y, 4, 0, Math.PI * 2);
-      cursorCtx.fillStyle = cfg.color;
-      cursorCtx.fill();
+      ctxCursor.beginPath();
+      ctxCursor.arc(x, y, r + 6, 0, Math.PI * 2);
+      ctxCursor.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctxCursor.lineWidth = 1;
+      ctxCursor.stroke();
+      ctxCursor.beginPath();
+      ctxCursor.arc(x, y, r, 0, Math.PI * 2);
+      ctxCursor.strokeStyle = 'rgba(255,255,255,0.8)';
+      ctxCursor.lineWidth = 2.5;
+      ctxCursor.setLineDash([6, 6]);
+      ctxCursor.lineDashOffset = -cursorPhase * 10;
+      ctxCursor.stroke();
+      ctxCursor.setLineDash([]);
+      ctxCursor.beginPath();
+      ctxCursor.arc(x, y, 4, 0, Math.PI * 2);
+      ctxCursor.fillStyle = cfg.color;
+      ctxCursor.fill();
     } else {
-      // Idle: simple crosshair
-      cursorCtx.beginPath();
-      cursorCtx.arc(x, y, 10, 0, Math.PI * 2);
-      cursorCtx.strokeStyle = 'rgba(255,255,255,0.35)';
-      cursorCtx.lineWidth = 1.5;
-      cursorCtx.stroke();
-      cursorCtx.beginPath();
-      cursorCtx.arc(x, y, 2, 0, Math.PI * 2);
-      cursorCtx.fillStyle = 'rgba(255,255,255,0.6)';
-      cursorCtx.fill();
+      ctxCursor.beginPath();
+      ctxCursor.arc(x, y, 10, 0, Math.PI * 2);
+      ctxCursor.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctxCursor.lineWidth = 1.5;
+      ctxCursor.stroke();
+      ctxCursor.beginPath();
+      ctxCursor.arc(x, y, 2, 0, Math.PI * 2);
+      ctxCursor.fillStyle = 'rgba(255,255,255,0.6)';
+      ctxCursor.fill();
     }
 
-    cursorCtx.restore();
+    ctxCursor.restore();
   }
 
   function renderLoop() {
     rafId = requestAnimationFrame(renderLoop);
 
-    const w = drawCanvas.width;
-    const h = drawCanvas.height;
+    const w = outputCanvas.width;
+    const h = outputCanvas.height;
 
     if (!handLandmarker || videoEl.readyState < 2) return;
+
+    // Draw camera feed onto output canvas (mirrored)
+    ctxOut.save();
+    ctxOut.translate(w, 0);
+    ctxOut.scale(-1, 1);
+    ctxOut.drawImage(videoEl, 0, 0, w, h);
+    ctxOut.restore();
+
+    // Subtle darken so strokes are visible
+    ctxOut.fillStyle = 'rgba(0,0,0,0.06)';
+    ctxOut.fillRect(0, 0, w, h);
 
     const now = videoEl.currentTime;
     if (now !== lastVideoTime) {
@@ -217,7 +222,10 @@ export function createHandTracker(videoEl, drawCanvas, cursorCanvas, callbacks) 
           if (onMode) onMode(gesture);
         }
 
-        const tipX = hand[8].x * w;
+        // Map raw landmark (0-1) to canvas pixel coords
+        // Since the canvas is manually mirrored in the draw step above,
+        // and landmarks are in the raw video frame, we need to mirror X.
+        const tipX = (1 - hand[8].x) * w;
         const tipY = hand[8].y * h;
 
         if (gesture === 'draw') {
@@ -250,7 +258,7 @@ export function createHandTracker(videoEl, drawCanvas, cursorCanvas, callbacks) 
   function handleResize() {
     const w = window.innerWidth;
     const h = window.innerHeight;
-    for (const c of [drawCanvas, cursorCanvas]) {
+    for (const c of [outputCanvas, drawCanvas, cursorCanvas]) {
       c.width = w;
       c.height = h;
     }
@@ -334,40 +342,25 @@ export function createHandTracker(videoEl, drawCanvas, cursorCanvas, callbacks) 
 
   function undo() {
     if (undoStack.length > 0) {
-      drawCtx.putImageData(undoStack.pop(), 0, 0);
+      ctxDraw.putImageData(undoStack.pop(), 0, 0);
     }
     return undoStack.length;
   }
 
   function clear() {
     pushUndo();
-    drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+    ctxDraw.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
     return undoStack.length;
   }
 
   function download() {
     const merge = document.createElement('canvas');
-    merge.width = drawCanvas.width;
-    merge.height = drawCanvas.height;
+    merge.width = outputCanvas.width;
+    merge.height = outputCanvas.height;
     const mCtx = merge.getContext('2d');
 
-    mCtx.fillStyle = '#0a0a0f';
-    mCtx.fillRect(0, 0, merge.width, merge.height);
-
-    mCtx.save();
-    mCtx.translate(merge.width, 0);
-    mCtx.scale(-1, 1);
-    mCtx.drawImage(videoEl, 0, 0, merge.width, merge.height);
-    mCtx.restore();
-
-    mCtx.fillStyle = 'rgba(10,10,15,0.15)';
-    mCtx.fillRect(0, 0, merge.width, merge.height);
-
-    mCtx.save();
-    mCtx.translate(merge.width, 0);
-    mCtx.scale(-1, 1);
+    mCtx.drawImage(outputCanvas, 0, 0);
     mCtx.drawImage(drawCanvas, 0, 0);
-    mCtx.restore();
 
     const link = document.createElement('a');
     link.download = `air-canvas-${Date.now()}.png`;
