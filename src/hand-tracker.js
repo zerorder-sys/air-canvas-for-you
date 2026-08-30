@@ -30,6 +30,10 @@ export function createHandTracker(videoEl, outputCanvas, drawCanvas, cursorCanva
   let lastStatus = '';
   let lastMode = '';
   let lastFpsSent = 0;
+  let vidDrawX = 0;
+  let vidDrawY = 0;
+  let vidDrawW = 0;
+  let vidDrawH = 0;
 
   function smoothLandmarks(raw) {
     landmarkBuffer.push(raw.map(l => ({ x: l.x, y: l.y, z: l.z })));
@@ -175,11 +179,20 @@ export function createHandTracker(videoEl, outputCanvas, drawCanvas, cursorCanva
 
     if (!handLandmarker || videoEl.readyState < 2) return;
 
-    // Draw camera feed onto output canvas (mirrored)
+    // Draw camera feed onto output canvas (mirrored, contain)
+    const vw = videoEl.videoWidth;
+    const vh = videoEl.videoHeight;
+    if (vw && vh) {
+      const scale = Math.min(w / vw, h / vh);
+      vidDrawW = vw * scale;
+      vidDrawH = vh * scale;
+      vidDrawX = (w - vidDrawW) / 2;
+      vidDrawY = (h - vidDrawH) / 2;
+    }
     ctxOut.save();
     ctxOut.translate(w, 0);
     ctxOut.scale(-1, 1);
-    ctxOut.drawImage(videoEl, 0, 0, w, h);
+    ctxOut.drawImage(videoEl, vidDrawX, vidDrawY, vidDrawW, vidDrawH);
     ctxOut.restore();
 
     // Subtle darken so strokes are visible
@@ -206,7 +219,7 @@ export function createHandTracker(videoEl, outputCanvas, drawCanvas, cursorCanva
             lastMode = 'idle';
             if (onMode) onMode('idle');
           }
-          drawCursor(w / 2, h / 2, 'idle');
+          drawCursor(vidDrawX + vidDrawW / 2, vidDrawY + vidDrawH / 2, 'idle');
           return;
         }
 
@@ -223,10 +236,8 @@ export function createHandTracker(videoEl, outputCanvas, drawCanvas, cursorCanva
         }
 
         // Map raw landmark (0-1) to canvas pixel coords
-        // Since the canvas is manually mirrored in the draw step above,
-        // and landmarks are in the raw video frame, we need to mirror X.
-        const tipX = (1 - hand[8].x) * w;
-        const tipY = hand[8].y * h;
+        const tipX = (1 - hand[8].x) * vidDrawW + vidDrawX;
+        const tipY = hand[8].y * vidDrawH + vidDrawY;
 
         if (gesture === 'draw') {
           if (prevPoint) {
