@@ -523,18 +523,35 @@ async function initMediaPipe() {
   );
   console.log('[HandTracker] WASM loaded');
 
-  handLandmarker = await HandLandmarker.createFromOptions(vision, {
-    baseOptions: {
-      modelAssetPath: '/models/hand_landmarker.task',
-      delegate: 'GPU',
-    },
-    runningMode: 'VIDEO',
-    numHands: 1,
-    minHandDetectionConfidence: 0.5,
-    minHandPresenceConfidence: 0.5,
-    minTrackingConfidence: 0.5,
-  });
-  console.log('[HandTracker] HandLandmarker ready');
+  // Try GPU first, fall back to CPU if GPU fails (some mobile GPUs crash)
+  try {
+    handLandmarker = await HandLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: '/models/hand_landmarker.task',
+        delegate: 'GPU',
+      },
+      runningMode: 'VIDEO',
+      numHands: 1,
+      minHandDetectionConfidence: 0.5,
+      minHandPresenceConfidence: 0.5,
+      minTrackingConfidence: 0.5,
+    });
+    console.log('[HandTracker] HandLandmarker ready (GPU)');
+  } catch (gpuErr) {
+    console.warn('[HandTracker] GPU delegate failed, falling back to CPU:', gpuErr.message);
+    handLandmarker = await HandLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: '/models/hand_landmarker.task',
+        delegate: 'CPU',
+      },
+      runningMode: 'VIDEO',
+      numHands: 1,
+      minHandDetectionConfidence: 0.5,
+      minHandPresenceConfidence: 0.5,
+      minTrackingConfidence: 0.5,
+    });
+    console.log('[HandTracker] HandLandmarker ready (CPU fallback)');
+  }
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────

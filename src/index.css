@@ -10,6 +10,11 @@ body {
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   height: 100vh;
   width: 100vw;
+  /* Prevent pull-to-refresh and overscroll on mobile */
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: none;
+  position: fixed;
+  inset: 0;
 }
 
 #root {
