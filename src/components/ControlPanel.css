@@ -5,18 +5,25 @@
   transform: translateX(-50%);
   z-index: 100;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
+  gap: 8px;
+  padding: 10px 14px;
   border-radius: 14px;
   background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
-  flex-wrap: wrap;
-  justify-content: center;
   max-width: 96vw;
+}
+
+.ctrl-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  justify-content: center;
 }
 
 .ctrl-group {
@@ -29,11 +36,12 @@
   width: 1px;
   height: 24px;
   background: rgba(255, 255, 255, 0.15);
+  flex-shrink: 0;
 }
 
 .color-btn {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   border: 2.5px solid rgba(255, 255, 255, 0.2);
   cursor: pointer;
@@ -50,18 +58,21 @@
 }
 
 .ctrl-btn {
-  padding: 8px 14px;
+  padding: 7px 12px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, transform 0.1s;
   user-select: none;
   white-space: nowrap;
   font-family: inherit;
+  flex: 1;
+  min-width: 0;
+  text-align: center;
 }
 
 .ctrl-btn:active {
@@ -143,32 +154,29 @@
 
 @media (max-width: 640px) {
   .ctrl-panel {
-    bottom: env(safe-area-inset-bottom, 10px);
-    left: 8px;
-    right: 8px;
+    bottom: env(safe-area-inset-bottom, 8px);
+    left: 6px;
+    right: 6px;
     transform: none;
-    width: auto;
     max-width: none;
-    gap: 6px;
-    padding: 10px 12px;
+    padding: 8px 10px;
     background: rgba(0, 0, 0, 0.85);
   }
 
   .color-btn {
-    width: 32px;
-    height: 32px;
-    border-width: 3px;
+    width: 28px;
+    height: 28px;
+    border-width: 2.5px;
   }
 
   .ctrl-btn {
-    padding: 10px 14px;
-    font-size: 13px;
-    min-height: 40px;
+    padding: 8px 6px;
+    font-size: 11px;
+    min-height: 36px;
     background: rgba(255, 255, 255, 0.12);
     color: #fff;
   }
 
-  .slider-wrap input[type='range'] { width: 60px; }
+  .slider-wrap input[type='range'] { width: 50px; }
   .divider { display: none; }
-  .ctrl-group.actions { width: 100%; justify-content: center; gap: 8px; }
 }

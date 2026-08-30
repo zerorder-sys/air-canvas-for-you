@@ -23,37 +23,37 @@ export default function ControlPanel({
 
   return (
     <div className="ctrl-panel">
-      <div className="ctrl-group colors">
-        {COLORS.map((c) => (
-          <button
-            key={c.value}
-            className={`color-btn${color === c.value && !isErasing ? ' active' : ''}`}
-            style={{ background: c.value }}
-            title={c.label}
-            onClick={() => onColorChange(c.value)}
-          />
-        ))}
-      </div>
+      <div className="ctrl-row">
+        <div className="ctrl-group colors">
+          {COLORS.map((c) => (
+            <button
+              key={c.value}
+              className={`color-btn${color === c.value && !isErasing ? ' active' : ''}`}
+              style={{ background: c.value }}
+              title={c.label}
+              onClick={() => onColorChange(c.value)}
+            />
+          ))}
+        </div>
 
-      <div className="divider" />
+        <div className="divider" />
 
-      <div className="ctrl-group">
-        <div className="slider-wrap">
-          <label>Size</label>
-          <input
-            type="range"
-            min="2"
-            max="25"
-            value={brushSize}
-            onChange={handleSize}
-          />
-          <span className="size-val">{brushSize}px</span>
+        <div className="ctrl-group">
+          <div className="slider-wrap">
+            <label>Size</label>
+            <input
+              type="range"
+              min="2"
+              max="25"
+              value={brushSize}
+              onChange={handleSize}
+            />
+            <span className="size-val">{brushSize}px</span>
+          </div>
         </div>
       </div>
 
-      <div className="divider" />
-
-      <div className="ctrl-group actions">
+      <div className="ctrl-row">
         <button
           className={`ctrl-btn${isErasing ? ' active' : ''}`}
           onClick={onToggleEraser}
