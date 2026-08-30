@@ -78,7 +78,7 @@ function download() {
   mCtx.fillStyle = '#0a0a0f';
   mCtx.fillRect(0, 0, merge.width, merge.height);
 
-  // Camera feed (mirrored to match on-screen appearance)
+  // Camera feed (manual flip to match CSS-mirrored on-screen appearance)
   mCtx.save();
   mCtx.translate(merge.width, 0);
   mCtx.scale(-1, 1);
@@ -89,8 +89,12 @@ function download() {
   mCtx.fillStyle = 'rgba(10,10,15,0.25)';
   mCtx.fillRect(0, 0, merge.width, merge.height);
 
-  // Drawing layer (canvas already has CSS mirror, so draw raw → matches screen)
+  // Drawing layer (manual flip to match CSS-mirrored on-screen appearance)
+  mCtx.save();
+  mCtx.translate(merge.width, 0);
+  mCtx.scale(-1, 1);
   mCtx.drawImage(canvasDraw, 0, 0);
+  mCtx.restore();
 
   const link = document.createElement('a');
   link.download = `air-canvas-${Date.now()}.png`;
@@ -222,8 +226,8 @@ function drawCursor(hand) {
   if (!ctxCursor || !hand || !hand[8]) return;
 
   const index = hand[8];
-  // Mirror x to match the CSS-mirrored video/canvas appearance
-  const x = (1 - index.x) * window.innerWidth;
+  // Raw coordinates — CSS scaleX(-1) on all layers handles mirroring
+  const x = index.x * window.innerWidth;
   const y = index.y * window.innerHeight;
 
   cursorPhase = (cursorPhase + 0.12) % (Math.PI * 2);
@@ -288,12 +292,8 @@ function renderLoop() {
   // Clear overlays
   ctxOut.clearRect(0, 0, w, h);
 
-  // Draw camera feed (mirrored so it looks like a selfie mirror)
-  ctxOut.save();
-  ctxOut.translate(w, 0);
-  ctxOut.scale(-1, 1);
+  // Draw camera feed — no manual flip needed (CSS scaleX(-1) handles mirroring)
   ctxOut.drawImage(videoEl, 0, 0, w, h);
-  ctxOut.restore();
 
   // Slight darken so strokes pop
   ctxOut.fillStyle = 'rgba(0,0,0,0.12)';
@@ -328,6 +328,7 @@ function renderLoop() {
 
     if (gesture === 'pinch-draw') {
       const lm = hand[8]; // index fingertip
+      // Raw coordinates — CSS scaleX(-1) on draw-canvas handles mirroring
       const pt = { x: lm.x * w, y: lm.y * h };
 
       if (state.prevPt === null) {
@@ -449,17 +450,13 @@ function startMediaPipe() {
 
   handsInstance.setOptions({
     maxNumHands: 1,
-    modelComplexity: isMobile ? 0 : 1,
+    modelComplexity: isMobile ? 0 : 1, // 0=lite for mobile speed, 1=full for desktop accuracy
     minDetectionConfidence: 0.5,
     minTrackingConfidence: 0.5,
   });
 
   handsInstance.onResults((results) => {
     // Store landmarks — the render loop reads them
-    const handCount = results.multiHandLandmarks ? results.multiHandLandmarks.length : 0;
-    if (handCount > 0) {
-      console.log('[HandTracker] Hands detected:', handCount);
-    }
     state.hands = results.multiHandLandmarks || [];
   });
 
@@ -476,7 +473,7 @@ function startMediaPipe() {
     },
     width: isMobile ? 640 : 1280,
     height: isMobile ? 480 : 720,
-    facingMode: 'user',
+    facingMode: 'user', // Front-facing camera
   });
 
   cameraInstance.start().then(() => {

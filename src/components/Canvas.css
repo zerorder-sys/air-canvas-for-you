@@ -7,6 +7,13 @@
   height: 100vh;
 }
 
+/*
+ * KEY ARCHITECTURE (matches working IBahaaaldin/AIR-CANVAS):
+ * Video + ALL canvases are CSS-mirrored together.
+ * MediaPipe landmarks are raw (0–1, left-to-right of camera image).
+ * CSS scaleX(-1) flips everything uniformly, so raw coords → correct screen position.
+ * This means cursor and drawing coordinates use RAW landmark.x — no manual flipping needed.
+ */
 .input-video {
   position: absolute;
   top: 0;
@@ -29,16 +36,15 @@
   width: 100%;
   height: 100%;
   pointer-events: none;
+  transform: scaleX(-1);
 }
 
 .output-canvas {
   z-index: 1;
-  transform: scaleX(-1);
 }
 
 .draw-canvas {
   z-index: 2;
-  transform: scaleX(-1);
 }
 
 .cursor-canvas {
