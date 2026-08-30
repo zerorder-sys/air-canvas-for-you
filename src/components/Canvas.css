@@ -23,7 +23,7 @@
   object-fit: cover;
   transform: scaleX(-1);
   z-index: 0;
-  filter: brightness(0.65) contrast(1.05);
+  filter: brightness(0.85) contrast(1.05) saturate(1.1);
   pointer-events: none;
 }
 

@@ -11,7 +11,7 @@ import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 // ─── Shared mutable state ────────────────────────────────────────────────────
 const cfg = {
   color: '#ff0055',
-  brushSize: 6,
+  brushSize: 8,
   isErasing: false,
 };
 
@@ -40,14 +40,13 @@ let lastVideoTime = -1;
 
 // ─── Landmark smoothing (reduces jitter on mobile) ──────────────────────────
 const SMOOTH_FRAMES = 3;
-const landmarkBuffer = []; // Array of last SMOOTH_FRAMES landmark arrays
+const landmarkBuffer = [];
 
 function smoothLandmarks(raw) {
   landmarkBuffer.push(raw.map(l => ({ x: l.x, y: l.y, z: l.z })));
   if (landmarkBuffer.length > SMOOTH_FRAMES) landmarkBuffer.shift();
   if (landmarkBuffer.length === 1) return raw;
 
-  // Average all buffered frames per landmark
   const count = landmarkBuffer.length;
   return raw.map((_, i) => ({
     x: landmarkBuffer.reduce((s, f) => s + f[i].x, 0) / count,
@@ -55,10 +54,6 @@ function smoothLandmarks(raw) {
     z: landmarkBuffer.reduce((s, f) => s + f[i].z, 0) / count,
   }));
 }
-
-// ─── Pinch thresholds (hysteresis prevents flicker) ──────────────────────────
-const PINCH_ENTER = 0.07;
-const PINCH_EXIT = 0.10;
 
 // ─── Undo stack ──────────────────────────────────────────────────────────────
 const MAX_UNDO = 30;
@@ -102,7 +97,7 @@ function download() {
   mCtx.drawImage(videoEl, 0, 0, merge.width, merge.height);
   mCtx.restore();
 
-  mCtx.fillStyle = 'rgba(10,10,15,0.25)';
+  mCtx.fillStyle = 'rgba(10,10,15,0.15)';
   mCtx.fillRect(0, 0, merge.width, merge.height);
 
   // Drawing layer (manual flip to match CSS-mirrored on-screen appearance)
@@ -152,27 +147,44 @@ function fingerExtended(hand, tipIdx, mcpIdx) {
   return dist(hand[tipIdx], hand[0]) > dist(hand[mcpIdx], hand[0]) * 1.2;
 }
 
-// ─── Gesture classifier ──────────────────────────────────────────────────────
+/**
+ * Gesture classifier — uses FINGER POSE, not pinch.
+ *
+ *   Index UP + Middle DOWN → DRAW (point to draw)
+ *   Index UP + Middle UP (close together) → HOVER (pause, show cursor)
+ *   Everything else → IDLE (pen up)
+ */
 function classifyGesture(hand) {
-  const pinchDist = dist(hand[4], hand[8]); // thumb tip ↔ index tip
+  const iE = fingerExtended(hand, 8, 5);  // index extended
+  const mE = fingerExtended(hand, 12, 9); // middle extended
+  const rE = fingerExtended(hand, 16, 13); // ring extended
+  const pE = fingerExtended(hand, 20, 17); // pinky extended
 
-  // Pinch → draw
-  if (state.isPenDown && pinchDist > PINCH_EXIT) {
+  // Index UP + Middle DOWN → DRAW
+  if (iE && !mE) {
+    if (!state.isPenDown) {
+      state.isPenDown = true;
+      return 'draw';
+    }
+    return 'draw';
+  }
+
+  // Index was drawing but now middle came up → end stroke
+  if (state.isPenDown && iE && mE) {
     state.isPenDown = false;
-    return 'idle';
+    return 'hover';
   }
-  if (!state.isPenDown && pinchDist < PINCH_ENTER) {
-    state.isPenDown = true;
-    return 'pinch-draw';
-  }
-  if (state.isPenDown) return 'pinch-draw';
 
-  // Index + middle extended close together → hover
-  const iE = fingerExtended(hand, 8, 5);
-  const mE = fingerExtended(hand, 12, 9);
+  // Index UP + Middle UP (close together) → HOVER
   if (iE && mE) {
     const d = dist(hand[8], hand[12]);
-    if (d < 0.08) return 'hover';
+    if (d < 0.10) return 'hover';
+  }
+
+  // Fingers went down → end stroke
+  if (state.isPenDown) {
+    state.isPenDown = false;
+    return 'idle';
   }
 
   return 'idle';
@@ -224,7 +236,7 @@ function endStroke() {
   }
 }
 
-// ─── Cursor drawing ──────────────────────────────────────────────────────────
+// ─── Cursor drawing — large glowing round indicator ──────────────────────────
 let cursorPhase = 0;
 
 function drawCursor(hand) {
@@ -234,49 +246,120 @@ function drawCursor(hand) {
   const x = index.x * window.innerWidth;
   const y = index.y * window.innerHeight;
 
-  cursorPhase = (cursorPhase + 0.12) % (Math.PI * 2);
+  cursorPhase = (cursorPhase + 0.1) % (Math.PI * 2);
   const pulse = Math.sin(cursorPhase);
-  const r = Math.max(8, cfg.brushSize * 0.6 + 6 + pulse * 1.5);
+
+  const brushR = Math.max(6, cfg.brushSize * 0.8);
+  const outerR = brushR + 18 + pulse * 3;
 
   ctxCursor.save();
   ctxCursor.clearRect(0, 0, window.innerWidth, window.innerHeight);
 
-  if (state.isPenDown) {
+  if (cfg.isErasing) {
+    // ── Eraser cursor: large red hollow circle with crosshair ──
+    const eraserR = brushR * 3 + pulse * 2;
     ctxCursor.beginPath();
-    ctxCursor.arc(x, y, r * 0.7 + 2, 0, Math.PI * 2);
-    ctxCursor.strokeStyle = cfg.color;
+    ctxCursor.arc(x, y, eraserR, 0, Math.PI * 2);
+    ctxCursor.strokeStyle = 'rgba(255,100,100,0.8)';
     ctxCursor.lineWidth = 2.5;
-    ctxCursor.shadowBlur = 14;
-    ctxCursor.shadowColor = cfg.color;
+    ctxCursor.shadowBlur = 16;
+    ctxCursor.shadowColor = 'rgba(255,100,100,0.6)';
     ctxCursor.globalAlpha = 0.9;
     ctxCursor.stroke();
 
+    // Crosshair
+    ctxCursor.setLineDash([]);
+    ctxCursor.lineWidth = 1.5;
+    ctxCursor.globalAlpha = 0.5;
+    ctxCursor.strokeStyle = 'rgba(255,100,100,0.7)';
     ctxCursor.beginPath();
-    ctxCursor.arc(x, y, 2.5, 0, Math.PI * 2);
-    ctxCursor.fillStyle = '#fff';
-    ctxCursor.shadowBlur = 4;
+    ctxCursor.moveTo(x - 8, y); ctxCursor.lineTo(x + 8, y);
+    ctxCursor.stroke();
+    ctxCursor.beginPath();
+    ctxCursor.moveTo(x, y - 8); ctxCursor.lineTo(x, y + 8);
+    ctxCursor.stroke();
+  } else if (state.isPenDown) {
+    // ── Drawing cursor: solid colored glow ring + center dot ──
+    // Outer glow halo
+    ctxCursor.beginPath();
+    ctxCursor.arc(x, y, outerR + 6, 0, Math.PI * 2);
+    ctxCursor.strokeStyle = cfg.color;
+    ctxCursor.lineWidth = 1;
+    ctxCursor.shadowBlur = 30;
+    ctxCursor.shadowColor = cfg.color;
+    ctxCursor.globalAlpha = 0.25 + pulse * 0.1;
+    ctxCursor.stroke();
+
+    // Main ring
+    ctxCursor.beginPath();
+    ctxCursor.arc(x, y, outerR, 0, Math.PI * 2);
+    ctxCursor.strokeStyle = cfg.color;
+    ctxCursor.lineWidth = 3;
+    ctxCursor.shadowBlur = 20;
+    ctxCursor.shadowColor = cfg.color;
+    ctxCursor.globalAlpha = 0.95;
+    ctxCursor.stroke();
+
+    // Brush size preview circle (inner)
+    ctxCursor.beginPath();
+    ctxCursor.arc(x, y, brushR * 0.7, 0, Math.PI * 2);
+    ctxCursor.strokeStyle = cfg.color;
+    ctxCursor.lineWidth = 1.5;
+    ctxCursor.shadowBlur = 10;
+    ctxCursor.globalAlpha = 0.6;
+    ctxCursor.stroke();
+
+    // Center dot
+    ctxCursor.beginPath();
+    ctxCursor.arc(x, y, 3, 0, Math.PI * 2);
+    ctxCursor.fillStyle = '#ffffff';
+    ctxCursor.shadowBlur = 8;
+    ctxCursor.shadowColor = '#ffffff';
     ctxCursor.globalAlpha = 1;
     ctxCursor.fill();
   } else {
+    // ── Hover/Idle cursor: spinning dashed glow ring + center dot ──
+    // Outer glow
     ctxCursor.beginPath();
-    ctxCursor.arc(x, y, r, 0, Math.PI * 2);
-    ctxCursor.setLineDash([5, 6]);
-    ctxCursor.lineDashOffset = -cursorPhase * 8;
-    ctxCursor.strokeStyle = 'rgba(255,255,255,0.6)';
-    ctxCursor.lineWidth = 1.5;
-    ctxCursor.shadowBlur = 5;
+    ctxCursor.arc(x, y, outerR + 4, 0, Math.PI * 2);
+    ctxCursor.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctxCursor.lineWidth = 1;
+    ctxCursor.shadowBlur = 20;
     ctxCursor.shadowColor = 'rgba(255,255,255,0.3)';
-    ctxCursor.globalAlpha = 0.7;
+    ctxCursor.globalAlpha = 0.4 + pulse * 0.15;
     ctxCursor.stroke();
 
+    // Spinning dashed ring
+    ctxCursor.beginPath();
+    ctxCursor.arc(x, y, outerR, 0, Math.PI * 2);
+    ctxCursor.setLineDash([6, 7]);
+    ctxCursor.lineDashOffset = -cursorPhase * 10;
+    ctxCursor.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctxCursor.lineWidth = 2;
+    ctxCursor.shadowBlur = 12;
+    ctxCursor.shadowColor = 'rgba(255,255,255,0.5)';
+    ctxCursor.globalAlpha = 0.8;
+    ctxCursor.stroke();
+
+    // Center dot with current color
     ctxCursor.setLineDash([]);
     ctxCursor.beginPath();
-    ctxCursor.arc(x, y, 2, 0, Math.PI * 2);
+    ctxCursor.arc(x, y, 3, 0, Math.PI * 2);
     ctxCursor.fillStyle = cfg.color;
-    ctxCursor.shadowBlur = 4;
+    ctxCursor.shadowBlur = 10;
     ctxCursor.shadowColor = cfg.color;
-    ctxCursor.globalAlpha = 0.9;
+    ctxCursor.globalAlpha = 1;
     ctxCursor.fill();
+
+    // Inner ring showing brush size
+    ctxCursor.beginPath();
+    ctxCursor.arc(x, y, brushR * 0.7, 0, Math.PI * 2);
+    ctxCursor.strokeStyle = cfg.color;
+    ctxCursor.lineWidth = 1;
+    ctxCursor.shadowBlur = 6;
+    ctxCursor.shadowColor = cfg.color;
+    ctxCursor.globalAlpha = 0.4;
+    ctxCursor.stroke();
   }
 
   ctxCursor.restore();
@@ -291,7 +374,7 @@ function renderLoop() {
   const w = canvasOut.width;
   const h = canvasOut.height;
 
-  // --- Hand detection (runs inside RAF, not a separate callback) ---
+  // --- Hand detection ---
   if (handLandmarker && videoEl.readyState >= 2) {
     const now = videoEl.currentTime;
     if (now !== lastVideoTime) {
@@ -304,26 +387,28 @@ function renderLoop() {
           state.hands = [];
           landmarkBuffer.length = 0;
         }
-      } catch (err) {
-        // Swallow frame errors to keep pipeline alive
+      } catch (_) {
+        // Swallow frame errors
       }
     }
   }
 
-  // --- Draw camera feed ---
+  // --- Draw camera feed (bright, no heavy darkening) ---
   ctxOut.clearRect(0, 0, w, h);
   ctxOut.drawImage(videoEl, 0, 0, w, h);
-  ctxOut.fillStyle = 'rgba(0,0,0,0.12)';
+
+  // Very subtle darken — just enough so strokes are visible
+  ctxOut.fillStyle = 'rgba(0,0,0,0.06)';
   ctxOut.fillRect(0, 0, w, h);
 
-  // --- FPS counter (direct DOM, zero React) ---
+  // --- FPS counter ---
   state.frameCount++;
-  const now = performance.now();
-  if (now - state.lastFpsTime >= 1000) {
+  const t = performance.now();
+  if (t - state.lastFpsTime >= 1000) {
     const fpsEl = document.getElementById('fps-counter');
     if (fpsEl) fpsEl.textContent = state.frameCount + ' FPS';
     state.frameCount = 0;
-    state.lastFpsTime = now;
+    state.lastFpsTime = t;
   }
 
   // --- Clear cursor canvas ---
@@ -334,7 +419,6 @@ function renderLoop() {
   const hand = state.hands[0];
 
   if (hand) {
-    // Update status bar (direct DOM)
     const dot = document.getElementById('status-dot');
     const txt = document.getElementById('status-text');
     if (dot && !dot.classList.contains('connected')) dot.classList.add('connected');
@@ -343,7 +427,7 @@ function renderLoop() {
     const gesture = classifyGesture(hand);
     const badge = document.getElementById('mode-badge');
 
-    if (gesture === 'pinch-draw') {
+    if (gesture === 'draw') {
       const lm = hand[8]; // index fingertip
       const pt = { x: lm.x * w, y: lm.y * h };
 
@@ -406,15 +490,17 @@ function updateStatus(msg) {
   if (txt) txt.textContent = msg;
 }
 
-// ─── Start camera stream directly (no Camera utility needed) ─────────────────
+// ─── Start camera with HIGH QUALITY stream ───────────────────────────────────
 async function startCamera() {
   const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
+  // Request the highest quality available — browser picks the closest match
   const constraints = {
     video: {
       facingMode: 'user',
-      width: { ideal: isMobile ? 640 : 1280 },
-      height: { ideal: isMobile ? 480 : 720 },
+      width: { ideal: isMobile ? 1280 : 1920 },
+      height: { ideal: isMobile ? 720 : 1080 },
+      frameRate: { ideal: 30 },
     },
     audio: false,
   };
@@ -423,13 +509,13 @@ async function startCamera() {
   videoEl.srcObject = stream;
   await videoEl.play();
 
+  // Log the ACTUAL resolution the camera gave us
   console.log('[HandTracker] Camera started:', videoEl.videoWidth, 'x', videoEl.videoHeight);
 }
 
 // ─── Initialize MediaPipe HandLandmarker ─────────────────────────────────────
 async function initMediaPipe() {
   console.log('[HandTracker] Loading MediaPipe Tasks Vision...');
-
   updateStatus('Loading AI model...');
 
   const vision = await FilesetResolver.forVisionTasks(
@@ -465,7 +551,7 @@ export function init(dom) {
   handleResize();
   window.addEventListener('resize', handleResize);
 
-  // Start render loop immediately (will wait for handLandmarker to be ready)
+  // Start render loop immediately
   if (!animFrameId) {
     animFrameId = requestAnimationFrame(renderLoop);
   }
@@ -496,7 +582,7 @@ export function init(dom) {
 
   boot();
 
-  return { undo, clear: clearCanvas, download, getUndoCount: () => state.undoHistory.length, destroy };
+  return { undo, clear: clearCanvas, download, getUndoCount: () => state.undoHistory.length, setConfig, destroy };
 }
 
 function setConfig(newCfg) {

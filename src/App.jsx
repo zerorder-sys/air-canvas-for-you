@@ -14,8 +14,8 @@ function App() {
 
   const handleReady = useCallback((api) => {
     apiRef.current = api;
-    // Hide loading after model starts
-    setTimeout(() => setLoading(false), 1500);
+    // Hide loading after model starts — a bit longer for mobile WASM load
+    setTimeout(() => setLoading(false), 2000);
   }, []);
 
   // Forward color/brushSize/eraser changes to hand-tracker config
