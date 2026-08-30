@@ -114,7 +114,7 @@ export default function App() {
       <div className="nav-bar">
         <div className="nav-left">
           <img src="/icon.svg" alt="" className="nav-logo" />
-          <span className="nav-title">Air Canvas</span>
+          <span className="nav-title">For You Canvas</span>
         </div>
         <div className="nav-right">
           <div className={`dot ${isDrawing ? 'draw' : isHovering ? 'hover' : handDetected ? 'detected' : ''}`} />
