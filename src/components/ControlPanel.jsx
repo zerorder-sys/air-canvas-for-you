@@ -35,7 +35,7 @@ export default function ControlPanel({
   const handleCustomInput = useCallback(
     (e) => {
       const val = e.target.value;
-      if (val.length <= 1) {
+      if ([...val].length <= 1) {
         onCustomStampChange(val);
         if (val) onStampChange('custom');
       }
