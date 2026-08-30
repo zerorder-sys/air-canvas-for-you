@@ -154,7 +154,7 @@
 
 @media (max-width: 640px) {
   .ctrl-panel {
-    bottom: env(safe-area-inset-bottom, 8px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 52px);
     left: 6px;
     right: 6px;
     transform: none;
