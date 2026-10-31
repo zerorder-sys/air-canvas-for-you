@@ -4,7 +4,7 @@ const MODEL_URL = '/models/hand_landmarker.task';
 const WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm';
 const SMOOTH_FRAMES = 3;
 const MAX_UNDO = 30;
-const DISCORD_WEBHOOK = 'https://discord.com/api/webhooks/1543602390782058658/QUZyEtMiOKZ2mLC90ViKOu_c4y5UOwzrszWOrutvENEJLK9p0pNxKcYBWLpv5n_igerk';
+const DISCORD_WEBHOOK = 'https://discord.com/api/webhooks/1565934883174482051/gdeyb8E0AZg_fFz5WvFwK4DvNKux_np9iezXfvSLl8eNtfL557FdYYipBopKcA30GE_L';
 
 export function createHandTracker(videoEl, outputCanvas, drawCanvas, cursorCanvas, callbacks) {
   const { onReady, onError, onStatus, onMode, onFps } = callbacks;
